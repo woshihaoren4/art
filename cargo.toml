@@ -1,0 +1,23 @@
+[package]
+name = "art"
+version = "0.0.1"
+edition = "2021"
+authors = ["Teshin <1443965173@qq.com>"]
+repository = "https://github.com/woshihaoren4/art"
+keywords = ["art"]
+description = "agent scheduling"
+license = "MIT"
+readme = "README.md"
+
+
+[dependencies]
+wd_tools = {version = "0.13.14",features = ["full"]}
+wd_log = "0.4.0"
+anyhow = "1.0.75"
+async-trait = "0.1.77"
+serde = {version = "1.0.188",features = ["derive"]}
+serde_json = "1.0.105"
+tokio = {version = "1",features = ["full"]}
+pin-project-lite = {version = "0.2.9"}
+#lazy_static = "1.4.0"
+#futures = "0.3.30"
