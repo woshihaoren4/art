@@ -1,6 +1,7 @@
 use wd_tools::PFErr;
 use crate::core::{Ctx, ServiceEntity};
 
+#[derive(Debug)]
 pub enum NextPlan {
     Nodes(Vec<ServiceEntity>),
     End,

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::task::Waker;
 use wd_tools::sync::Am;
 
-#[derive(Default)]
+#[derive(Default,Copy, Clone)]
 pub enum CtxStatus {
     #[default]
     Init,
@@ -195,10 +195,14 @@ impl Ctx {
             async {()}
         }).await;
     }
+    pub fn get_status(&self)->CtxStatus{
+        self.deref_mut_metadata(|c|c.status)
+    }
     pub fn go<In: Any + Send>(self,input: In){
         Engine::go(self,input)
     }
-    pub async fn run<In: Any + Send,Out:Any>(ctx: Ctx, input: In) -> anyhow::Result<Out>{
-        Engine::run(ctx,input).await
+    pub async fn run<In: Any + Send,Out:Any>(self, input: In) -> anyhow::Result<Out>{
+        Engine::run(self,input).await
     }
+
 }

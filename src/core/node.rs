@@ -1,5 +1,6 @@
 use crate::core::Service;
 use std::any::Any;
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
 pub struct ServiceEntity {
@@ -8,7 +9,17 @@ pub struct ServiceEntity {
 
     pub service_name: String,
     pub node_name:String,
-    pub config: Box<dyn Any + Send>,
+    pub config: Box<dyn Any + Send+Sync+'static>,
+}
+impl Display for ServiceEntity{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f,"service_name:{},node_name:{}",self.service_name,self.node_name)
+    }
+}
+impl Debug for ServiceEntity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f,"{}",self)
+    }
 }
 impl Default for ServiceEntity {
     fn default() -> Self {
@@ -21,9 +32,9 @@ impl Default for ServiceEntity {
         }
     }
 }
-impl<N: Into<String>, C: Any + Send> From<(N, C)> for ServiceEntity {
+impl<N: Into<String>, C: Any + Send  + Sync +'static> From<(N, C)> for ServiceEntity {
     fn from((n, c): (N, C)) -> Self {
-        Self::new(c).set_node_name(n)
+        Self::new(c).set_service_name(n)
     }
 }
 impl From<&str> for ServiceEntity {
@@ -40,7 +51,7 @@ impl ServiceEntity {
         self.service = service;
         self
     }
-    pub fn new<A: Any + Send>(cfg: A) -> Self {
+    pub fn new<A: Any + Send + Sync +'static>(cfg: A) -> Self {
         Self::default().set_config(cfg)
     }
     pub fn set_node_name<S: Into<String>>(mut self, name: S) -> Self {
@@ -51,7 +62,7 @@ impl ServiceEntity {
         self.service_name = name.into();
         self
     }
-    pub fn set_config<A: Any + Send>(mut self, config: A) -> Self {
+    pub fn set_config<A: Any + Send + Sync +'static>(mut self, config: A) -> Self {
         self.config = Box::new(config);
         self
     }

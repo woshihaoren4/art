@@ -1,13 +1,15 @@
 use crate::core::{Ctx, NextPlan, Plan, ServiceEntity};
 use std::collections::HashMap;
 use std::mem::take;
+use serde::{Deserialize, Serialize};
 use wd_tools::PFErr;
 
-#[derive(Default)]
+#[derive(Default,Serialize,Deserialize)]
 pub struct DAGNode {
     pub node_name: String,
     pub from: Vec<String>,
     pub to: Vec<String>,
+    #[serde(skip)]
     pub service: Option<ServiceEntity>,
 }
 impl DAGNode {
@@ -85,27 +87,29 @@ impl DAGNode {
 }
 impl<N: Into<String>, E: Into<ServiceEntity>> From<(N, E)> for DAGNode {
     fn from((n, e): (N, E)) -> Self {
-        Self::new(n).set_service(e)
+        let mut n = Self::new(n);
+        let e = e.into().set_node_name(n.node_name.clone());
+        n.set_service(e)
     }
 }
 
-#[derive(Default)]
+#[derive(Default,Serialize,Deserialize)]
 pub struct DAG {
-    pub start_node_name: String,
-    pub end_node_name: String,
+    pub start: String,
+    pub end: String,
     pub node_set: HashMap<String, DAGNode>,
 }
 impl Plan for DAG {
     fn string(&self) -> String {
-        format!("{{}}")
+        serde_json::to_string(self).unwrap_or("".to_string())
     }
 
     fn start_node_name(&self) -> &str {
-        &self.start_node_name
+        &self.start
     }
 
     fn end_node_name(&self) -> &str {
-        &self.end_node_name
+        &self.end
     }
 
     fn get(&mut self, name: &str) -> Option<ServiceEntity> {
@@ -117,7 +121,7 @@ impl Plan for DAG {
     }
 
     fn next(&mut self, _ctx: Ctx, name: &str) -> anyhow::Result<NextPlan> {
-        if name == self.end_node_name {
+        if name == self.end {
             return Ok(NextPlan::End);
         }
         let to = if let Some(i) = self.node_set.get_mut(name) {
@@ -128,7 +132,7 @@ impl Plan for DAG {
         let mut next = vec![];
         for i in to {
             if let Some(n) = self.node_set.get_mut(i.as_str()) {
-                if let Some(s) = n.remove_from_and_take_service(i.as_str()) {
+                if let Some(s) = n.remove_from_and_take_service(name) {
                     next.push(s);
                 }
             } else {
@@ -154,10 +158,10 @@ impl DAG {
         let from = from.into();
         let to = to.into();
         //自动追踪起点和终点
-        if self.start_node_name.is_empty() {
-            self.start_node_name = from.clone();
+        if self.start.is_empty() {
+            self.start = from.clone();
         }
-        self.end_node_name = to.clone();
+        self.end = to.clone();
 
         if let Some(n) = self.node_set.get_mut(from.as_str()) {
             n.add_to(to.clone());
@@ -185,27 +189,27 @@ impl DAG {
         self
     }
     pub fn set_start_node_name<F: Into<String>>(mut self, name: F) -> Self {
-        self.start_node_name = name.into();
+        self.start = name.into();
         self
     }
     pub fn set_end_node_name<F: Into<String>>(mut self, name: F) -> Self {
-        self.end_node_name = name.into();
+        self.end = name.into();
         self
     }
     pub fn check(self) -> anyhow::Result<Self> {
         //检查起始终止节点
-        if self.node_set.get(self.start_node_name.as_str()).is_none() {
-            return anyhow::anyhow!("not found start node[{}]", self.start_node_name).err();
+        if self.node_set.get(self.start.as_str()).is_none() {
+            return anyhow::anyhow!("not found start node[{}]", self.start).err();
         }
-        if self.node_set.get(self.end_node_name.as_str()).is_none() {
-            return anyhow::anyhow!("not found end node[{}]", self.end_node_name).err();
+        if self.node_set.get(self.end.as_str()).is_none() {
+            return anyhow::anyhow!("not found end node[{}]", self.end).err();
         }
         //检查中间节点
         for (k, v) in self.node_set.iter() {
             if v.service.is_none() {
                 return anyhow::anyhow!("node[{}].service is empty", k).err();
             }
-            if v.node_name == self.start_node_name {
+            if v.node_name == self.start {
                 //起始节点
                 if !v.from.is_empty() {
                     return anyhow::anyhow!("start node.from must is empty").err();
@@ -225,7 +229,7 @@ impl DAG {
                     }
                 }
             }
-            if v.node_name == self.end_node_name {
+            if v.node_name == self.end {
                 //终止节点
                 if !v.to.is_empty() {
                     return anyhow::anyhow!("end node.to must is empty").err();
@@ -253,11 +257,12 @@ impl DAG {
 
 #[cfg(test)]
 mod test {
+    use crate::core::Plan;
     use crate::plan::dag::DAG;
 
     #[test]
     fn test_dag() {
-        let _dag = DAG::default()
+        let dag = DAG::default()
             .node(("start", ""))
             .node(("A", ""))
             .node(("B", ""))
@@ -272,6 +277,7 @@ mod test {
             .edges([("E", "end"), ("F", "end")])
             .check()
             .expect("dag check failed");
+        println!("start[{}]->..->end[{}]",dag.start_node_name(),dag.end_node_name());
         println!("success");
     }
 }

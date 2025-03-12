@@ -32,7 +32,7 @@ impl Default for EngineRT {
             runtime_pool,
             flow_start_callback,
             flow_end_callback,
-        }
+        }.append_service_middle(Engine::base_hook)
     }
 }
 
@@ -111,6 +111,7 @@ impl Future for StartServiceFut {
         if !this.start.deref() {
             *this.start.deref_mut() = this.ctx.deref_mut_metadata(|c| c.status == CtxStatus::Init);
             cx.waker().wake_by_ref();
+            return Poll::Pending
         }
         this.fut.as_mut().poll(cx)
     }
@@ -136,7 +137,7 @@ impl Engine {
     }
     pub(crate) async fn raw_run<In: Any + Send>(ctx: Ctx, input: In) -> anyhow::Result<()> {
         ctx.get_env().feedback_ext(input).await?;
-        let start = ctx.unsafe_mut_plan(|c|c.end_node_name().to_string());
+        let start = ctx.unsafe_mut_plan(|c|c.start_node_name().to_string());
         let rt = ctx.rt.clone();
         let mut se = ctx.deref_mut_plan(|c|{
             let option = c.get(start.as_str());
@@ -172,6 +173,9 @@ impl Engine {
         }
         Ok(())
     }
+    pub async fn load_service(&self,name:&str)->Option<Arc<dyn Service + Sync + 'static>> {
+        self.entity.service_loader.load(name).await
+    }
     pub fn go<In: Any + Send>(ctx:Ctx,input: In){
         tokio::spawn(async move {
             if let Err(err) = Self::raw_run(ctx.clone(),input).await{
@@ -181,18 +185,23 @@ impl Engine {
     }
     pub async fn run<In: Any + Send,Out:Any>(ctx: Ctx, input: In) -> anyhow::Result<Out>{
         Self::raw_run(ctx.clone(),input).await?;
+        if ctx.get_status() == CtxStatus::SUCCESS {
+            let end = ctx.unsafe_mut_plan(|c|c.end_node_name().to_string());
+            let out = ctx.async_mut_metadata(|c|{
+                let out = c.vars.remove(end.as_str());
+                async move{out}
+            }).await;
+            return if let Some(s) = out{
+                s.into()
+            }else{
+                anyhow::anyhow!("not found result").err()
+            }
+        }
         if let Some(e) = ctx.get_env().watch_ext::<Error>().await?{
-            return Err(anyhow::Error::from(e))
-        }
-        let end = ctx.unsafe_mut_plan(|c|c.end_node_name().to_string());
-        let out = ctx.async_mut_metadata(|c|{
-            let out = c.vars.remove(end.as_str());
-            async move{out}
-        }).await;
-        if let Some(s) = out{
-            s.into()
+            Err(anyhow::Error::from(e))
         }else{
-            anyhow::anyhow!("not found result").err()
+            Err(anyhow::Error::from(Error::Unknown("not found error".into())))
         }
+
     }
 }

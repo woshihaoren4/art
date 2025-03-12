@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug)]
 pub enum Error {
+    Unknown(String),
     EndCallbackError(anyhow::Error),
     ServiceNotFound(String),
     NodeEntityNotFound(String),
@@ -18,6 +19,9 @@ impl<T> Into<anyhow::Result<T>> for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Error::Unknown(info)=>{
+                write!(f, "EndCallbackError:{:?}", info)
+            }
             Error::EndCallbackError(err)=>{
                 write!(f, "EndCallbackError:{:?}", err)
             }

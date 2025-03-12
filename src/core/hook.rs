@@ -1,4 +1,5 @@
-use crate::core::{Ctx, Engine, NextPlan, Output, ServiceEntity};
+use wd_tools::PFErr;
+use crate::core::{Ctx, Engine, Error, NextPlan, Output, OutputObject, ServiceEntity};
 
 #[async_trait::async_trait]
 pub trait FlowCallback: Send {
@@ -33,7 +34,12 @@ impl Engine {
                 return Ok(Output::new(()));
             }
         };
-        for i in nodes{
+        for mut i in nodes{
+            if let Some(s) = rt.load_service(i.service_name.as_str()).await {
+                i = i.set_service(s);
+            }else{
+                return Err(Error::ServiceNotFound(i.service_name).into())
+            }
             Engine::call_service(ctx.clone(),rt.clone(),i).await;
         }
         Ok(Output::new(()))
