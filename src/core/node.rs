@@ -1,5 +1,5 @@
-use crate::core::Service;
-use std::any::Any;
+use crate::core::{EmptyServiceImpl, Service};
+use std::any::{Any};
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
@@ -25,7 +25,7 @@ impl Default for ServiceEntity {
     fn default() -> Self {
         Self {
             middle_index: 0,
-            service: Arc::new(()),
+            service: Arc::new(EmptyServiceImpl),
             service_name: "".to_string(),
             node_name:"".to_string(),
             config: Box::new(()),
@@ -65,5 +65,16 @@ impl ServiceEntity {
     pub fn set_config<A: Any + Send + Sync +'static>(mut self, config: A) -> Self {
         self.config = Box::new(config);
         self
+    }
+    pub fn transform_config<F,T:Any,Out>(&mut self, transform_func:F) ->Out
+    where F:FnOnce(Option<T>) -> Out
+    {
+        let t = if self.config.is::<T>(){
+            let val = std::mem::replace(&mut self.config,Box::new(()));
+            val.downcast::<T>().map(|x|Some(*x)).unwrap_or(None)
+        }else{
+            None
+        };
+        transform_func(t)
     }
 }

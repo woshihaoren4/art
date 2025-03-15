@@ -80,16 +80,18 @@ impl DAGNode {
         }
         false
     }
-    pub fn set_service<E: Into<ServiceEntity>>(mut self, service: E) -> Self {
-        self.service = Some(service.into());
+    pub fn set_service_entity<E: Into<ServiceEntity>>(mut self, service: E) -> Self {
+        let se = service.into()
+            .set_node_name(self.node_name.to_string());
+        self.service = Some(se);
         self
     }
 }
 impl<N: Into<String>, E: Into<ServiceEntity>> From<(N, E)> for DAGNode {
     fn from((n, e): (N, E)) -> Self {
-        let mut n = Self::new(n);
+        let n = Self::new(n);
         let e = e.into().set_node_name(n.node_name.clone());
-        n.set_service(e)
+        n.set_service_entity(e)
     }
 }
 
@@ -100,7 +102,7 @@ pub struct DAG {
     pub node_set: HashMap<String, DAGNode>,
 }
 impl Plan for DAG {
-    fn string(&self) -> String {
+    fn show_plan(&self) -> String {
         serde_json::to_string(self).unwrap_or("".to_string())
     }
 
@@ -216,7 +218,7 @@ impl DAG {
                 }
             } else {
                 if v.from.is_empty() {
-                    return anyhow::anyhow!("middle node.from must is not empty").err();
+                    return anyhow::anyhow!("middle node[{}].from must is not empty",v.node_name).err();
                 }
                 for i in v.from.iter() {
                     if let Some(n) = self.node_set.get(i) {

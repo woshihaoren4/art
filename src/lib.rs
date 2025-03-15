@@ -4,13 +4,11 @@ pub mod service;
 
 #[cfg(test)]
 mod test {
-    use crate::core::{Ctx, EngineRT, MapServiceLoader, Output, Plan};
+    use crate::core::{Ctx, EngineRT, MapServiceLoader, Output};
     use crate::plan::dag::DAG;
 
     #[tokio::test]
     async fn simple_test() {
-        let plan = DAG::default().nodes([("a","sa"),("b","sb")]).edge("a","b").check().unwrap();
-        println!("plan->{}",plan.string());
         let rt = EngineRT::default()
             .set_service_loader(MapServiceLoader::default()
                 .register_service(
@@ -31,8 +29,14 @@ mod test {
                 println!("执行一个service:{}",se);
                 ctx.next(se)
             })
+            .append_start_callback(|c:Ctx|async move{
+                c.deref_mut_plan(|p|{
+                    println!("plan->{}",p.show_plan());
+                });
+                Ok(())
+            })
             .build();
-        let res = rt.ctx(plan)
+        let res = rt.ctx(DAG::default().nodes([("a","sa"),("b","sb")]).edge("a","b").check().unwrap())
             .run::<_,String>("xxx").await.unwrap();
         assert_eq!(res.as_str(),"b->success");
         println!("simple_test success");

@@ -9,7 +9,7 @@ pub enum NextPlan {
 }
 
 pub trait Plan: Send {
-    fn string(&self) -> String {
+    fn show_plan(&self) -> String {
         "".into()
     }
     fn start_node_name(&self) -> &str {

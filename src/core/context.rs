@@ -90,15 +90,6 @@ impl Clone for Ctx {
         }
     }
 }
-// impl From<Context> for Ctx {
-//     fn from(value: Context) -> Self {
-//         let env = value.env.clone();
-//         Self {
-//             env,
-//             ce: Am::new(value).arc(),
-//         }
-//     }
-// }
 
 impl Ctx {
     pub async fn next(self, mut node: ServiceEntity) -> anyhow::Result<Output> {
@@ -162,10 +153,10 @@ impl Ctx {
         c.plan = Arc::new(Am::new(Box::new(())));
         c
     }
-    pub(crate) fn set_waker(self, waker: Waker) -> Self {
-        self.unsafe_mut_metadata(|c| c.waker = Some(waker));
-        self
-    }
+    // pub(crate) fn set_waker(self, waker: Waker) -> Self {
+    //     self.unsafe_mut_metadata(|c| c.waker = Some(waker));
+    //     self
+    // }
     pub fn set_env(mut self, env: Arc<dyn Env + 'static>) -> Self {
         self.env = env.clone();
         self

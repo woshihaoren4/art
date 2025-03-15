@@ -1,9 +1,20 @@
-use wd_tools::PFErr;
-use crate::core::{Ctx, Engine, Error, NextPlan, Output, OutputObject, ServiceEntity};
+use std::future::Future;
+use crate::core::{Ctx, Engine, Error, NextPlan, Output, ServiceEntity};
 
 #[async_trait::async_trait]
 pub trait FlowCallback: Send {
     async fn call(&self, ctx: Ctx) -> anyhow::Result<()>;
+}
+
+#[async_trait::async_trait]
+impl<Fut, T> FlowCallback for T
+where
+    T: Fn(Ctx) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = anyhow::Result<()>> + Send,
+{
+    async fn call(&self, ctx: Ctx) -> anyhow::Result<()> {
+        self(ctx).await
+    }
 }
 
 impl Engine {

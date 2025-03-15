@@ -8,6 +8,7 @@ mod output;
 mod plan;
 mod pool;
 mod service;
+mod service_json_ext;
 
 pub use context::*;
 pub use engine::*;

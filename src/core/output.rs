@@ -3,9 +3,6 @@ use std::any::{type_name, Any};
 use std::fmt::{Debug, Formatter};
 use wd_tools::PFErr;
 
-pub struct Pipeline {}
-
-
 pub trait OutputObject {
     fn type_name(&self)->&'static str{
         std::any::type_name::<Self>().into()

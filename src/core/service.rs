@@ -6,8 +6,11 @@ use std::sync::Arc;
 pub trait Service: Send {
     async fn call(&self, ctx: Ctx, node: ServiceEntity) -> anyhow::Result<Output>;
 }
+
+pub struct EmptyServiceImpl;
+
 #[async_trait::async_trait]
-impl Service for () {
+impl Service for EmptyServiceImpl {
     async fn call(&self, _ctx: Ctx, _node: ServiceEntity) -> anyhow::Result<Output> {
         Ok(Output::new(()))
     }
