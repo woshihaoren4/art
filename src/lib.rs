@@ -15,13 +15,13 @@ mod test {
                 "sa",
                 |_x, _c| async {
                     wd_log::log_field("service_a : info:", "hello").debug("this is a test service");
-                    Ok(Output::new("a->success".to_string()))
+                    Ok(Output::value("a->success"))
                 })
                 .register_service(
                     "sb",
                     |_x,_c|async {
                         wd_log::log_field("service_b : info:", "world").debug("this is a test service");
-                        Ok(Output::new("b->success".to_string()))
+                        Ok(Output::value("b->success"))
                     }
                 )
             )

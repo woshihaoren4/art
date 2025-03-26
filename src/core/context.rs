@@ -1,12 +1,13 @@
 use std::any::Any;
 use crate::core::env::{CabinetEnv, Env, EnvExt};
-use crate::core::{Engine, Error, Output, Plan, ServiceEntity};
+use crate::core::{Engine, Error, Output, OutputObject, Plan, ServiceEntity};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use std::task::Waker;
+use serde_json::Value;
 use wd_tools::sync::Am;
 
 #[derive(Default,Copy, Clone)]
@@ -137,6 +138,22 @@ impl Ctx {
             let c = self.ce.raw_ptr_mut();
             function(&mut *c)
         }
+    }
+    pub async fn insert_var<N:Into<String>,T:Into<Output>>(&self,node:N,t:T){
+        self.async_mut_metadata(|c|{
+            c.vars.insert(node.into(),t.into());
+            async {()}
+        }).await
+    }
+    pub async fn get_value(&self,node:&str,field:&str)->Option<Value>{
+        self.async_mut_metadata(|c|{
+            let res = if let Some(val) = c.vars.get(node){
+                val.get_val(field)
+            }else{
+                None
+            };
+            async move {res}
+        }).await
     }
     pub fn deref_mut_plan<Out, H: FnOnce(&mut Box<dyn Plan + Sync + 'static>) -> Out>(&self, function: H) -> Out {
         let mut lock = self.plan.synchronize();

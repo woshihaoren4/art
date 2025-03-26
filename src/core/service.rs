@@ -12,7 +12,7 @@ pub struct EmptyServiceImpl;
 #[async_trait::async_trait]
 impl Service for EmptyServiceImpl {
     async fn call(&self, _ctx: Ctx, _node: ServiceEntity) -> anyhow::Result<Output> {
-        Ok(Output::new(()))
+        Ok(Output::default())
     }
 }
 

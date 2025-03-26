@@ -39,10 +39,10 @@ impl Engine {
             NextPlan::Nodes(nodes) => nodes,
             NextPlan::End => {
                 ctx.success().await;
-                return Ok(Output::new(()));
+                return Ok(Output::default());
             }
             NextPlan::Wait => {
-                return Ok(Output::new(()));
+                return Ok(Output::default());
             }
         };
         for mut i in nodes{
@@ -53,6 +53,6 @@ impl Engine {
             }
             Engine::call_service(ctx.clone(),rt.clone(),i).await;
         }
-        Ok(Output::new(()))
+        Ok(Output::default())
     }
 }

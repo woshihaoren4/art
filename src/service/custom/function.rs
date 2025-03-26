@@ -44,8 +44,8 @@ mod test {
     }
     #[tokio::test]
     async fn test_fn_impl_service() {
-        let _ser = fn_impl_service(|_c, _s| async move { Ok(Output::new(())) });
-        let ser = FnServiceLayer::new(|_c,_n|async move{ Ok(Output::new(()))});
+        let _ser = fn_impl_service(|_c, _s| async move { Ok(Output::default()) });
+        let ser = FnServiceLayer::new(|_c,_n|async move{ Ok(Output::default())});
         let _ser = fn_impl_service(ser);
     }
 }

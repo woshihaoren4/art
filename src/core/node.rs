@@ -66,6 +66,16 @@ impl ServiceEntity {
         self.config = Box::new(config);
         self
     }
+    pub fn deref_mut_transform_config<F,T:Any,Out>(&mut self, transform_func:F) ->Out
+    where F:FnOnce(Option<&T>) -> Out
+    {
+        let t = if self.config.is::<T>(){
+            self.config.downcast_mut()
+        }else{
+            None
+        };
+        transform_func(t.as_deref())
+    }
     pub fn transform_config<F,T:Any,Out>(&mut self, transform_func:F) ->Out
     where F:FnOnce(Option<T>) -> Out
     {
