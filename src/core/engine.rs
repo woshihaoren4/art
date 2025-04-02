@@ -135,8 +135,9 @@ impl Engine {
         let fut = Self::ignore_err(ctx, se);
         rt.entity.runtime_pool.push(Box::pin(fut)).await;
     }
-    pub(crate) async fn raw_run<In: Any + Send>(ctx: Ctx, input: In) -> anyhow::Result<()> {
-        ctx.get_env().feedback_ext(input).await?;
+    pub(crate) async fn raw_run<In: Any + Send>(mut ctx: Ctx, input: In) -> anyhow::Result<()> {
+        // ctx.get_env().feedback_ext(input).await?;
+        ctx = ctx.insert_input(input);
         let start = ctx.unsafe_mut_plan(|c|c.start_node_name().to_string());
         let rt = ctx.rt.clone();
         let mut se = ctx.deref_mut_plan(|c|{
@@ -197,11 +198,11 @@ impl Engine {
                 anyhow::anyhow!("not found result").err()
             }
         }
-        if let Some(e) = ctx.get_env().watch_ext::<Error>().await?{
+
+        if let Some(e) = ctx.rem_error(){
             Err(anyhow::Error::from(e))
         }else{
             Err(anyhow::Error::from(Error::Unknown("not found error".into())))
         }
-
     }
 }

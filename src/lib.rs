@@ -4,6 +4,7 @@ pub mod service;
 
 #[cfg(test)]
 mod test {
+    use serde_json::Value;
     use crate::core::{Ctx, EngineRT, MapServiceLoader, Output};
     use crate::plan::dag::DAG;
 
@@ -37,8 +38,15 @@ mod test {
             })
             .build();
         let res = rt.ctx(DAG::default().nodes([("a","sa"),("b","sb")]).edge("a","b").check().unwrap())
-            .run::<_,String>("xxx").await.unwrap();
-        assert_eq!(res.as_str(),"b->success");
+            .run::<_,Value>("xxx").await.unwrap();
+        match res {
+            Value::String(s)=>{
+                assert_eq!(s,"b->success");
+            }
+            _ =>{
+                panic!("failed, expect string found:{:?}",res)
+            }
+        }
         println!("simple_test success");
     }
 }

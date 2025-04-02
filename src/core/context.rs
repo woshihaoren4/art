@@ -1,6 +1,6 @@
 use std::any::Any;
 use crate::core::env::{CabinetEnv, Env, EnvExt};
-use crate::core::{Engine, Error, Output, OutputObject, Plan, ServiceEntity};
+use crate::core::{Engine, Error, Output, Plan, ServiceEntity};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
@@ -68,6 +68,8 @@ impl PartialEq for CtxStatus {
 // }
 
 pub struct Metadata {
+    pub input : Option<Box<dyn Any>>,
+    pub error: Option<Error>,
     pub status: CtxStatus,
     pub waker: Option<Waker>,
     // pub plan: Box<>,
@@ -111,6 +113,8 @@ impl Ctx {
     }
     pub fn new<P: Plan + Sync + 'static>(rt: Engine, plan: P) -> Self {
         let ctx = Metadata {
+            error: None,
+            input: None,
             status: Default::default(),
             waker: None,
             vars: Default::default(),
@@ -155,6 +159,27 @@ impl Ctx {
             async move {res}
         }).await
     }
+    pub fn insert_input<I:Any>(mut self,input:I)-> Self{
+        self.deref_mut_metadata(|c|{
+            c.input = Some(Box::new(input))
+        });self
+    }
+    pub fn rem_input(&mut self)->Option<Box<dyn Any>>{
+        self.deref_mut_metadata(|c|{
+            c.input.take()
+        })
+    }
+    pub fn insert_error(&self,err:anyhow::Error){
+        let err = err.downcast::<Error>().unwrap_or_else(|e| Error::AnyhowError(e));
+        self.deref_mut_metadata(|c|{
+            c.error = Some(err)
+        });
+    }
+    pub fn rem_error(&self)->Option<Error>{
+        self.deref_mut_metadata(|c|{
+            c.error.take()
+        })
+    }
     pub fn deref_mut_plan<Out, H: FnOnce(&mut Box<dyn Plan + Sync + 'static>) -> Out>(&self, function: H) -> Out {
         let mut lock = self.plan.synchronize();
         function(lock.deref_mut())
@@ -181,12 +206,14 @@ impl Ctx {
     pub fn get_env(&self) -> Arc<dyn Env + 'static> {
         self.env.clone()
     }
+
     pub async fn set_any_error(&self,err:anyhow::Error){
         let err = err.downcast::<Error>().unwrap_or_else(|e| Error::AnyhowError(e));
-        if let Err(e) = self.get_env().feedback_ext(err).await {
-            wd_log::log_field("error",e).error("ctx.next return error and to env failed");
-        }
+        // if let Err(e) = self.get_env().feedback_ext(err).await {
+        //     wd_log::log_field("error",e).error("ctx.next return error and to env failed");
+        // }
         self.async_mut_metadata(|c|{
+            c.error = Some(err);
             c.status = CtxStatus::Error;
             if let Some(w) = c.waker.take() {
                 w.wake();

@@ -2,31 +2,41 @@ use std::future::Future;
 use std::marker::PhantomData;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
-use serde_json::Value;
 use wd_tools::{PFErr, PFOk};
-use crate::core::{Ctx, Output, Service, ServiceEntity};
+use crate::core::{Ctx, JsonInput, Output, Service, ServiceEntity};
 
 #[async_trait::async_trait]
-pub trait JsonServiceExt<In:DeserializeOwned,Out:Serialize>:Send {
-    fn input(&self,_ctx: Ctx, se:&mut ServiceEntity)->anyhow::Result<In>{
-        let res = se.transform_config(|c:Option<Value>|{
-            if let Some(s) = c {
-                Some(serde_json::from_value::<In>(s))
-            }else{
-                None
-            }
+pub trait JsonServiceExt<In:Serialize+DeserializeOwned+Default+Send+'static,Out:Serialize+Send+'static>:Send {
+    async fn input(&self,ctx: Ctx, se:&mut ServiceEntity)->anyhow::Result<In>{
+        let res = se.transform_config(|c:Option<JsonInput>|{
+            c
+            // if let Some(s) = c {
+            //     s.default_transform(ctx)
+            //     // Some(serde_json::from_value::<In>(s))
+            // }else{
+            //     // None
+            //     Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity config must json Value",se.service_name,se.node_name))
+            // }
         });
         match res {
-            Some(Ok(o))=>Ok(o),
-            Some(Err(e))=>{
-                Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity transform input failed:{}",se.service_name,se.node_name,e))
+            Some(s)=>{
+                s.default_transform(ctx).await
             }
-            None=>{
+            None =>{
                 Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity config must json Value",se.service_name,se.node_name))
             }
         }
+        // match res {
+        //     Some(Ok(o))=>Ok(o),
+        //     Some(Err(e))=>{
+        //         Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity transform input failed:{}",se.service_name,se.node_name,e))
+        //     }
+        //     None=>{
+        //         Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity config must json Value",se.service_name,se.node_name))
+        //     }
+        // }
     }
-    fn output(&self,out:Out)->anyhow::Result<Output>{
+    async fn output(&self,out:Out)->anyhow::Result<Output>{
         match serde_json::to_value(out){
             Ok(o)=>Output::new(o).ok(),
             Err(e)=>anyhow::anyhow!("JsonServiceExt:output failed:{e}").err()
@@ -36,11 +46,11 @@ pub trait JsonServiceExt<In:DeserializeOwned,Out:Serialize>:Send {
 }
 
 #[async_trait::async_trait]
-impl<Fut,In:DeserializeOwned,Out:Serialize,F:> JsonServiceExt<In,Out> for F
+impl<Fut,In,Out,F> JsonServiceExt<In,Out> for F
 where F:Fn(Ctx,In,ServiceEntity)->Fut + Send+Sync+'static,
     Fut:Future<Output =anyhow::Result<Out>>+Send,
-    In: DeserializeOwned+Send+Sync+'static,
-    Out: Serialize+Send+Sync,
+    In: Serialize+DeserializeOwned+Send+Sync+'static+Default,
+    Out: Serialize+Send+Sync+'static,
 {
     async fn call(&self, ctx: Ctx, input: In, se: ServiceEntity) -> anyhow::Result<Out> {
         self(ctx,input,se).await
@@ -54,8 +64,8 @@ pub struct JsonService<T,In,Out>{
 }
 impl<T,In,Out> JsonService<T,In,Out>
 where T:JsonServiceExt<In,Out>+ Sync + 'static,
-      In: DeserializeOwned+Send+Sync,
-      Out: Serialize+Send+Sync,
+      In: Serialize+DeserializeOwned+Send+Sync+Default+'static,
+      Out: Serialize+Send+Sync+'static,
 {
     pub fn new(inner:T)->Self{
         Self{inner,_in:PhantomData::default(),_out:PhantomData::default()}
@@ -65,13 +75,13 @@ where T:JsonServiceExt<In,Out>+ Sync + 'static,
 #[async_trait::async_trait]
 impl<T,In,Out> Service for JsonService<T,In,Out>
 where T: JsonServiceExt<In,Out> + Sync + 'static,
-    In: DeserializeOwned+Send+Sync,
-    Out: Serialize+Send+Sync,
+    In: Serialize+DeserializeOwned+Send+Sync+Default+'static,
+    Out: Serialize+Send+Sync+'static,
 {
     async fn call(&self, ctx: Ctx, mut node: ServiceEntity) -> anyhow::Result<Output> {
-        let input = self.inner.input(ctx.clone(),&mut node)?;
+        let input = self.inner.input(ctx.clone(),&mut node).await?;
         let output = JsonServiceExt::call(&self.inner,ctx,input,node).await?;
-        self.inner.output(output)
+        self.inner.output(output).await
     }
 }
 

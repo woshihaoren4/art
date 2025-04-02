@@ -149,7 +149,7 @@ impl Tran {
 #[derive(Default,Debug,Clone,Serialize,Deserialize)]
 pub struct JsonInput{
     none_quote_skip:bool,
-    vars: Vec<(String, Tran)>,
+    transform_rule: Vec<(String, Tran)>,
 }
 
 impl JsonInput {
@@ -159,7 +159,7 @@ impl JsonInput {
     pub fn add_transform_rule<S:Into<String>,I:Into<Tran>>(mut self, position:S, transform:I) ->Self{
         let pos = position.into();
         let tran = transform.into();
-        self.vars.push((pos, tran));
+        self.transform_rule.push((pos, tran));
         self
     }
     pub fn add_transform_rules<S:Into<String>,T:Into<Tran>,I:IntoIterator<Item=(S,T)>>(mut self,iter : I)->Self{
@@ -168,10 +168,10 @@ impl JsonInput {
         }
         self
     }
-    pub fn add_transform_value<S:Into<String>,V:Into<Value>>(mut self, position:S, transform:V) ->Self{
+    pub fn add_transform_value<S:Into<String>,V:Into<Value>>(self, position:S, transform:V) ->Self{
         self.add_transform_rule(position,Tran::value(transform))
     }
-    pub fn add_transform_quote<S:Into<String>,V:Into<String>>(mut self, position:S, transform:V) ->Self{
+    pub fn add_transform_quote<S:Into<String>,V:Into<String>>(self, position:S, transform:V) ->Self{
         self.add_transform_rule(position,Tran::quote(transform))
     }
     fn insert_val_to_json_val(t:&mut Value,pos:&str,val:Value)->anyhow::Result<()>{
@@ -192,7 +192,7 @@ impl JsonInput {
     }
     pub async fn transform<T:Serialize+DeserializeOwned>(self, ctx:Ctx, val:T) ->anyhow::Result<T>{
         let mut val = serde_json::to_value(val)?;
-        for (k,v) in self.vars {
+        for (k,v) in self.transform_rule {
             let value = match v {
                 Tran::Value(v) => v,
                 Tran::Quote(q) => {
