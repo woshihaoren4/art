@@ -1,4 +1,3 @@
-use crate::core::env::EnvExt;
 use crate::core::hook::FlowCallback;
 use crate::core::service::{MapServiceLoader, Service, ServiceLoader};
 use crate::core::{Ctx, CtxStatus, Error, Plan, RuntimePool, ServiceEntity, TokioRuntimePool};
@@ -137,7 +136,7 @@ impl Engine {
     }
     pub(crate) async fn raw_run<In: Any + Send>(mut ctx: Ctx, input: In) -> anyhow::Result<()> {
         // ctx.get_env().feedback_ext(input).await?;
-        ctx = ctx.insert_input(input);
+        ctx.insert_input(input);
         let start = ctx.unsafe_mut_plan(|c|c.start_node_name().to_string());
         let rt = ctx.rt.clone();
         let mut se = ctx.deref_mut_plan(|c|{

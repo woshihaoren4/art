@@ -1,5 +1,5 @@
 use std::any::Any;
-use crate::core::env::{CabinetEnv, Env, EnvExt};
+use crate::core::env::{CabinetEnv, Env};
 use crate::core::{Engine, Error, Output, Plan, ServiceEntity};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -149,7 +149,18 @@ impl Ctx {
             async {()}
         }).await
     }
-    pub async fn get_value(&self,node:&str,field:&str)->Option<Value>{
+    pub async fn rm_var(&self,node:&str)->Option<Box<dyn Any+Send+'static>>{
+        let out = self.async_mut_metadata(|c|{
+            let out = c.vars.remove(node);
+            async move {out}
+        }).await;
+        if let Some(s) = out {
+            Some(s.into_any())
+        }else{
+            None
+        }
+    }
+    pub async fn get_var_field(&self, node:&str, field:&str) ->Option<Value>{
         self.async_mut_metadata(|c|{
             let res = if let Some(val) = c.vars.get(node){
                 val.get_val(field)
@@ -159,10 +170,10 @@ impl Ctx {
             async move {res}
         }).await
     }
-    pub fn insert_input<I:Any>(mut self,input:I)-> Self{
+    pub fn insert_input<I:Any>(&self,input:I){
         self.deref_mut_metadata(|c|{
             c.input = Some(Box::new(input))
-        });self
+        });
     }
     pub fn rem_input(&mut self)->Option<Box<dyn Any>>{
         self.deref_mut_metadata(|c|{

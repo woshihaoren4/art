@@ -17,7 +17,7 @@ pub trait OutputObject {
     fn string(&self) -> String {
         std::any::type_name::<Self>().into()
     }
-    fn any(self:Box<Self>) ->Box<dyn Any>;
+    fn any(self:Box<Self>) ->Box<dyn Any+Send+'static>;
 }
 
 // impl<T: Any> OutputObject for T {
@@ -75,7 +75,7 @@ impl OutputObject for Value {
     fn string(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|e|e.to_string())
     }
-    fn any(self:Box<Self>) ->Box<dyn Any>{
+    fn any(self:Box<Self>) ->Box<dyn Any+Send+'static>{
         self
     }
 }
@@ -127,6 +127,9 @@ impl Output {
     }
     pub fn set_value(&mut self, key: &str, val: Value) {
         self.inner.set_value(key,val)
+    }
+    pub fn into_any(self)->Box<dyn Any+Send+'static>{
+        self.inner.any()
     }
 }
 
@@ -203,7 +206,7 @@ impl JsonInput {
                     }else{
                         ""
                     };
-                    if let Some(val) =  ctx.get_value(node, key).await{
+                    if let Some(val) =  ctx.get_var_field(node, key).await{
                         val
                     }else{
                         if self.none_quote_skip {
