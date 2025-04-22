@@ -1,5 +1,6 @@
 use serde_json::Value;
 use std::any::{type_name, Any};
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
@@ -135,6 +136,7 @@ impl Output {
 
 
 #[derive(Debug,Clone,Serialize,Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Tran{
     Value(Value),
     Quote(String),
@@ -150,9 +152,10 @@ impl Tran {
 }
 
 #[derive(Default,Debug,Clone,Serialize,Deserialize)]
+#[serde(default)]
 pub struct JsonInput{
     none_quote_skip:bool,
-    transform_rule: Vec<(String, Tran)>,
+    transform_rule: HashMap<String,Tran>,
 }
 
 impl JsonInput {
@@ -162,7 +165,7 @@ impl JsonInput {
     pub fn add_transform_rule<S:Into<String>,I:Into<Tran>>(mut self, position:S, transform:I) ->Self{
         let pos = position.into();
         let tran = transform.into();
-        self.transform_rule.push((pos, tran));
+        self.transform_rule.insert (pos, tran);
         self
     }
     pub fn add_transform_rules<S:Into<String>,T:Into<Tran>,I:IntoIterator<Item=(S,T)>>(mut self,iter : I)->Self{
@@ -177,7 +180,7 @@ impl JsonInput {
     pub fn add_transform_quote<S:Into<String>,V:Into<String>>(self, position:S, transform:V) ->Self{
         self.add_transform_rule(position,Tran::quote(transform))
     }
-    fn insert_val_to_json_val(t:&mut Value,pos:&str,val:Value)->anyhow::Result<()>{
+    pub fn insert_val_to_json_val(t:&mut Value,pos:&str,val:Value)->anyhow::Result<()>{
         let ss = pos.splitn(2, ".").collect::<Vec<_>>();
         match t {
             Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_)  => {
@@ -192,6 +195,50 @@ impl JsonInput {
                 Ok(())
             }
         }
+    }
+    pub fn remove_val_from_json_val(t:&mut Value,pos:&str)->anyhow::Result<Value>{
+        if pos == "*" {
+            let val = std::mem::replace(t,Value::Null);
+            return Ok(val)
+        }
+        let ss = pos.splitn(2, ".").collect::<Vec<_>>();
+        match t {
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_)  => {
+                return anyhow::anyhow!("JsonInput.remove_val_from_json_val field[{}]",ss[0]).err()
+            }
+            Value::Object(map) => {
+                if ss.len() == 1 {
+                    if let Some(val) = map.remove(ss[0]){
+                        return Ok(val)
+                    }
+                }else{
+                    if let Some(val) = map.get_mut(ss[0]){
+                        return Self::remove_val_from_json_val(val,ss[1])
+                    }
+                }
+                return anyhow::anyhow!("JsonInput.remove_val_from_json_val not found field[{}]",ss[0]).err()
+            }
+        }
+    }
+    pub fn transform_value(self,tar:&mut Value,mut scr:Value)->anyhow::Result<()>{
+        for (k,v) in self.transform_rule {
+            let value = match v {
+                Tran::Value(v) => v,
+                Tran::Quote(q) => {
+                    if let Ok(val) = Self::remove_val_from_json_val(&mut scr, q.as_str()){
+                        val
+                    }else{
+                        if self.none_quote_skip {
+                            continue
+                        }else{
+                            return anyhow::anyhow!("JsonInput.transform_value not found node.field[{}]",q).err()
+                        }
+                    }
+                }
+            };
+            Self::insert_val_to_json_val(tar,k.as_str(),value)?;
+        }
+        Ok(())
     }
     pub async fn transform<T:Serialize+DeserializeOwned>(self, ctx:Ctx, val:T) ->anyhow::Result<T>{
         let mut val = serde_json::to_value(val)?;
@@ -217,6 +264,7 @@ impl JsonInput {
                     }
                 }
             };
+            println!("--->{}",val);
             Self::insert_val_to_json_val(&mut val,k.as_str(),value)?;
         }
         let t = serde_json::from_value::<T>(val)?;Ok(t)
@@ -224,6 +272,14 @@ impl JsonInput {
     pub async fn default_transform<T:Serialize+DeserializeOwned+Default>(self, ctx:Ctx) ->anyhow::Result<T>{
         let val = T::default();
         self.transform(ctx,val).await
+    }
+}
+
+impl TryFrom<&str> for JsonInput{
+    type Error = serde_json::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        serde_json::from_str::<JsonInput>(value)
     }
 }
 
@@ -262,5 +318,22 @@ mod test{
         assert_eq!(t.name,"helloworld");
         assert_eq!(t.list[0],1);
         assert_eq!(t.list[2],3);
+    }
+
+    #[test]
+    fn test_json_input_from(){
+        // let ji = JsonInput::default().skip_null_quote()
+        //     .add_transform_value("name", "helloworld")
+        //     .add_transform_quote("message", "test_node.message")
+        //     .add_transform_quote("code", "test_node.code_v2")
+        //     .add_transform_quote("list", "test_node.data.list");
+        // println!("{}",serde_json::to_string(&ji).unwrap());
+        let ji = JsonInput::try_from(r#"
+        {
+            "none_quote_skip":true,
+            "transform_rule":{"message":{"quote":"test_node.message"},"name":{"value":"helloworld"},"code":{"quote":"test_node.code_v2"},"list":{"quote":"test_node.data.list"}}
+        }
+        "#).unwrap();
+        println!("{:?}",ji)
     }
 }

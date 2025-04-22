@@ -10,13 +10,6 @@ pub trait JsonServiceExt<In:Serialize+DeserializeOwned+Default+Send+'static,Out:
     async fn input(&self,ctx: Ctx, se:&mut ServiceEntity)->anyhow::Result<In>{
         let res = se.transform_config(|c:Option<JsonInput>|{
             c
-            // if let Some(s) = c {
-            //     s.default_transform(ctx)
-            //     // Some(serde_json::from_value::<In>(s))
-            // }else{
-            //     // None
-            //     Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity config must json Value",se.service_name,se.node_name))
-            // }
         });
         match res {
             Some(s)=>{
@@ -26,15 +19,7 @@ pub trait JsonServiceExt<In:Serialize+DeserializeOwned+Default+Send+'static,Out:
                 Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity config must json Value",se.service_name,se.node_name))
             }
         }
-        // match res {
-        //     Some(Ok(o))=>Ok(o),
-        //     Some(Err(e))=>{
-        //         Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity transform input failed:{}",se.service_name,se.node_name,e))
-        //     }
-        //     None=>{
-        //         Err(anyhow::anyhow!("JsonServiceExt:{}.{} ServiceEntity config must json Value",se.service_name,se.node_name))
-        //     }
-        // }
+
     }
     async fn output(&self,out:Out)->anyhow::Result<Output>{
         match serde_json::to_value(out){

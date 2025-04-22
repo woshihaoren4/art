@@ -175,7 +175,7 @@ impl Ctx {
             c.input = Some(Box::new(input))
         });
     }
-    pub fn rem_input(&mut self)->Option<Box<dyn Any>>{
+    pub fn rem_input(&self)->Option<Box<dyn Any>>{
         self.deref_mut_metadata(|c|{
             c.input.take()
         })
