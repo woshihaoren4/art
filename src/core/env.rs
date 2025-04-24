@@ -2,8 +2,6 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use wd_tools::sync::Am;
 
-
-
 #[async_trait::async_trait]
 pub trait Env: Send + Sync {
     async fn watch(&self, t: TypeId) -> anyhow::Result<Option<Box<dyn Any>>>;
@@ -12,7 +10,9 @@ pub trait Env: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait EnvExt: Send + Sync {
+    #[allow(unused)]
     async fn watch_ext<T: Any>(&self) -> anyhow::Result<Option<T>>;
+    #[allow(unused)]
     async fn feedback_ext<T: Any + Send>(&self, info: T) -> anyhow::Result<()>;
 }
 

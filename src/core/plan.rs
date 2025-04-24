@@ -1,5 +1,5 @@
-use wd_tools::PFErr;
 use crate::core::{Ctx, ServiceEntity};
+use wd_tools::PFErr;
 
 #[derive(Debug)]
 pub enum NextPlan {
@@ -22,7 +22,7 @@ pub trait Plan: Send {
     fn next(&mut self, ctx: Ctx, name: &str) -> anyhow::Result<NextPlan>;
 }
 
-impl Plan for (){
+impl Plan for () {
     fn get(&mut self, _name: &str) -> Option<ServiceEntity> {
         None
     }

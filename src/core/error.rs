@@ -19,16 +19,16 @@ impl<T> Into<anyhow::Result<T>> for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Unknown(info)=>{
+            Error::Unknown(info) => {
                 write!(f, "EndCallbackError:{:?}", info)
             }
-            Error::EndCallbackError(err)=>{
+            Error::EndCallbackError(err) => {
                 write!(f, "EndCallbackError:{:?}", err)
             }
-            Error::ServiceNotFound(name)=>{
+            Error::ServiceNotFound(name) => {
                 write!(f, "Service[{}] not found", name)
             }
-            Error::NodeEntityNotFound(name)=>{
+            Error::NodeEntityNotFound(name) => {
                 write!(f, "Node Service Entity [{}] not found", name)
             }
             Error::NextNodeNull => {

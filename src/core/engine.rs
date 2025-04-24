@@ -2,7 +2,7 @@ use crate::core::hook::FlowCallback;
 use crate::core::service::{MapServiceLoader, Service, ServiceLoader};
 use crate::core::{Ctx, CtxStatus, Error, Plan, RuntimePool, ServiceEntity, TokioRuntimePool};
 use pin_project_lite::pin_project;
-use std::any::{Any};
+use std::any::Any;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
@@ -31,7 +31,8 @@ impl Default for EngineRT {
             runtime_pool,
             flow_start_callback,
             flow_end_callback,
-        }.append_service_middle(Engine::base_hook)
+        }
+        .append_service_middle(Engine::base_hook)
     }
 }
 
@@ -110,7 +111,7 @@ impl Future for StartServiceFut {
         if !this.start.deref() {
             *this.start.deref_mut() = this.ctx.deref_mut_metadata(|c| c.status == CtxStatus::Init);
             cx.waker().wake_by_ref();
-            return Poll::Pending
+            return Poll::Pending;
         }
         this.fut.as_mut().poll(cx)
     }
@@ -134,27 +135,32 @@ impl Engine {
         let fut = Self::ignore_err(ctx, se);
         rt.entity.runtime_pool.push(Box::pin(fut)).await;
     }
-    pub(crate) async fn raw_run<In: Any + Send>(mut ctx: Ctx, input: In) -> anyhow::Result<()> {
+    pub(crate) async fn raw_run<In: Any + Send>(ctx: Ctx, input: In) -> anyhow::Result<()> {
         // ctx.get_env().feedback_ext(input).await?;
         ctx.insert_input(input);
-        let start = ctx.unsafe_mut_plan(|c|c.start_node_name().to_string());
+        let start = ctx.unsafe_mut_plan(|c| c.start_node_name().to_string());
         let rt = ctx.rt.clone();
-        let mut se = ctx.deref_mut_plan(|c|{
+        let mut se = ctx.deref_mut_plan(|c| {
             let option = c.get(start.as_str());
-                match option {
-                    Some(o)=>Ok(o),
-                    None => Err(Error::NodeEntityNotFound(start))
-                }
+            match option {
+                Some(o) => Ok(o),
+                None => Err(Error::NodeEntityNotFound(start)),
+            }
         })?;
         //执行前置任务
         for i in rt.entity.flow_start_callback.iter() {
             i.call(ctx.clone()).await?;
         }
         //执行第一个service
-        if let Some(s) = rt.entity.service_loader.load(se.service_name.as_str()).await {
+        if let Some(s) = rt
+            .entity
+            .service_loader
+            .load(se.service_name.as_str())
+            .await
+        {
             se = se.set_service(s);
         } else {
-            return Err(Error::ServiceNotFound(se.service_name).into())
+            return Err(Error::ServiceNotFound(se.service_name).into());
         }
         let next = Self::call_service(ctx.clone(), rt.clone(), se);
         let ssf = StartServiceFut {
@@ -168,40 +174,44 @@ impl Engine {
         //执行后置任务
         for i in rt.entity.flow_end_callback.iter().rev() {
             if let Err(err) = i.call(ctx.clone()).await {
-                return Err(Error::EndCallbackError(err).into())
+                return Err(Error::EndCallbackError(err).into());
             }
         }
         Ok(())
     }
-    pub async fn load_service(&self,name:&str)->Option<Arc<dyn Service + Sync + 'static>> {
+    pub async fn load_service(&self, name: &str) -> Option<Arc<dyn Service + Sync + 'static>> {
         self.entity.service_loader.load(name).await
     }
-    pub fn go<In: Any + Send>(ctx:Ctx,input: In){
+    pub fn go<In: Any + Send>(ctx: Ctx, input: In) {
         tokio::spawn(async move {
-            if let Err(err) = Self::raw_run(ctx.clone(),input).await{
+            if let Err(err) = Self::raw_run(ctx.clone(), input).await {
                 ctx.set_any_error(err).await;
             }
         });
     }
-    pub async fn run<In: Any + Send,Out:Any>(ctx: Ctx, input: In) -> anyhow::Result<Out>{
-        Self::raw_run(ctx.clone(),input).await?;
+    pub async fn run<In: Any + Send, Out: Any>(ctx: Ctx, input: In) -> anyhow::Result<Out> {
+        Self::raw_run(ctx.clone(), input).await?;
         if ctx.get_status() == CtxStatus::SUCCESS {
-            let end = ctx.unsafe_mut_plan(|c|c.end_node_name().to_string());
-            let out = ctx.async_mut_metadata(|c|{
-                let out = c.vars.remove(end.as_str());
-                async move{out}
-            }).await;
-            return if let Some(s) = out{
+            let end = ctx.unsafe_mut_plan(|c| c.end_node_name().to_string());
+            let out = ctx
+                .async_mut_metadata(|c| {
+                    let out = c.vars.remove(end.as_str());
+                    async move { out }
+                })
+                .await;
+            return if let Some(s) = out {
                 s.into()
-            }else{
+            } else {
                 anyhow::anyhow!("not found result").err()
-            }
+            };
         }
 
-        if let Some(e) = ctx.rem_error(){
+        if let Some(e) = ctx.rem_error() {
             Err(anyhow::Error::from(e))
-        }else{
-            Err(anyhow::Error::from(Error::Unknown("not found error".into())))
+        } else {
+            Err(anyhow::Error::from(Error::Unknown(
+                "not found error".into(),
+            )))
         }
     }
 }

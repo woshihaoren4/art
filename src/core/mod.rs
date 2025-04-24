@@ -1,5 +1,6 @@
 mod context;
 mod engine;
+mod engine_serde_ext;
 mod env;
 mod error;
 mod hook;
@@ -9,10 +10,10 @@ mod plan;
 mod pool;
 mod service;
 mod service_json_ext;
-mod engine_serde_ext;
 
 pub use context::*;
 pub use engine::*;
+pub use engine_serde_ext::*;
 pub use error::*;
 pub use node::*;
 pub use output::*;
@@ -20,4 +21,3 @@ pub use plan::*;
 pub use pool::*;
 pub use service::*;
 pub use service_json_ext::*;
-pub use engine_serde_ext::*;

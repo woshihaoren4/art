@@ -1,10 +1,10 @@
 use crate::core::{Ctx, NextPlan, Plan, ServiceEntity};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::mem::take;
-use serde::{Deserialize, Serialize};
 use wd_tools::PFErr;
 
-#[derive(Default,Serialize,Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct DAGNode {
     pub node_name: String,
     pub from: Vec<String>,
@@ -81,8 +81,7 @@ impl DAGNode {
         false
     }
     pub fn set_service_entity<E: Into<ServiceEntity>>(mut self, service: E) -> Self {
-        let se = service.into()
-            .set_node_name(self.node_name.to_string());
+        let se = service.into().set_node_name(self.node_name.to_string());
         self.service = Some(se);
         self
     }
@@ -95,7 +94,7 @@ impl<N: Into<String>, E: Into<ServiceEntity>> From<(N, E)> for DAGNode {
     }
 }
 
-#[derive(Default,Serialize,Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct DAG {
     pub start: String,
     pub end: String,
@@ -218,7 +217,8 @@ impl DAG {
                 }
             } else {
                 if v.from.is_empty() {
-                    return anyhow::anyhow!("middle node[{}].from must is not empty",v.node_name).err();
+                    return anyhow::anyhow!("middle node[{}].from must is not empty", v.node_name)
+                        .err();
                 }
                 for i in v.from.iter() {
                     if let Some(n) = self.node_set.get(i) {
@@ -279,7 +279,11 @@ mod test {
             .edges([("E", "end"), ("F", "end")])
             .check()
             .expect("dag check failed");
-        println!("start[{}]->..->end[{}]",dag.start_node_name(),dag.end_node_name());
+        println!(
+            "start[{}]->..->end[{}]",
+            dag.start_node_name(),
+            dag.end_node_name()
+        );
         println!("success");
     }
 }

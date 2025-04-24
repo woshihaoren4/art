@@ -1,16 +1,16 @@
-use std::any::Any;
 use crate::core::env::{CabinetEnv, Env};
 use crate::core::{Engine, Error, Output, Plan, ServiceEntity};
+use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use std::task::Waker;
-use serde_json::Value;
 use wd_tools::sync::Am;
 
-#[derive(Default,Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub enum CtxStatus {
     #[default]
     Init,
@@ -68,7 +68,7 @@ impl PartialEq for CtxStatus {
 // }
 
 pub struct Metadata {
-    pub input : Option<Box<dyn Any>>,
+    pub input: Option<Box<dyn Any>>,
     pub error: Option<Error>,
     pub status: CtxStatus,
     pub waker: Option<Waker>,
@@ -79,15 +79,15 @@ pub struct Metadata {
 }
 pub struct Ctx {
     pub ce: Arc<Am<Metadata>>,
-    pub plan : Arc<Am<Box<dyn Plan + Sync + 'static>>>,
+    pub plan: Arc<Am<Box<dyn Plan + Sync + 'static>>>,
     pub env: Arc<dyn Env + 'static>,
     pub rt: Engine,
 }
 impl Clone for Ctx {
     fn clone(&self) -> Self {
         Self {
-            rt:self.rt.clone(),
-            plan:self.plan.clone(),
+            rt: self.rt.clone(),
+            plan: self.plan.clone(),
             ce: self.ce.clone(),
             env: self.env.clone(),
         }
@@ -126,7 +126,11 @@ impl Ctx {
             ce: Arc::new(Am::new(ctx)),
         }
     }
-    pub async fn async_mut_metadata<Out, Fut: Future<Output = Out>, H: FnOnce(&mut Metadata) -> Fut>(
+    pub async fn async_mut_metadata<
+        Out,
+        Fut: Future<Output = Out>,
+        H: FnOnce(&mut Metadata) -> Fut,
+    >(
         &self,
         function: H,
     ) -> Out {
@@ -143,65 +147,69 @@ impl Ctx {
             function(&mut *c)
         }
     }
-    pub async fn insert_var<N:Into<String>,T:Into<Output>>(&self,node:N,t:T){
-        self.async_mut_metadata(|c|{
-            c.vars.insert(node.into(),t.into());
-            async {()}
-        }).await
+    pub async fn insert_var<N: Into<String>, T: Into<Output>>(&self, node: N, t: T) {
+        self.async_mut_metadata(|c| {
+            c.vars.insert(node.into(), t.into());
+            async { () }
+        })
+        .await
     }
-    pub async fn rm_var(&self,node:&str)->Option<Box<dyn Any+Send+'static>>{
-        let out = self.async_mut_metadata(|c|{
-            let out = c.vars.remove(node);
-            async move {out}
-        }).await;
+    pub async fn rm_var(&self, node: &str) -> Option<Box<dyn Any + Send + 'static>> {
+        let out = self
+            .async_mut_metadata(|c| {
+                let out = c.vars.remove(node);
+                async move { out }
+            })
+            .await;
         if let Some(s) = out {
             Some(s.into_any())
-        }else{
+        } else {
             None
         }
     }
-    pub async fn get_var_field(&self, node:&str, field:&str) ->Option<Value>{
-        self.async_mut_metadata(|c|{
-            let res = if let Some(val) = c.vars.get(node){
+    pub async fn get_var_field(&self, node: &str, field: &str) -> Option<Value> {
+        self.async_mut_metadata(|c| {
+            let res = if let Some(val) = c.vars.get(node) {
                 val.get_val(field)
-            }else{
+            } else {
                 None
             };
-            async move {res}
-        }).await
-    }
-    pub fn insert_input<I:Any>(&self,input:I){
-        self.deref_mut_metadata(|c|{
-            c.input = Some(Box::new(input))
-        });
-    }
-    pub fn rem_input(&self)->Option<Box<dyn Any>>{
-        self.deref_mut_metadata(|c|{
-            c.input.take()
+            async move { res }
         })
+        .await
     }
-    pub fn insert_error(&self,err:anyhow::Error){
-        let err = err.downcast::<Error>().unwrap_or_else(|e| Error::AnyhowError(e));
-        self.deref_mut_metadata(|c|{
-            c.error = Some(err)
-        });
+    pub fn insert_input<I: Any>(&self, input: I) {
+        self.deref_mut_metadata(|c| c.input = Some(Box::new(input)));
     }
-    pub fn rem_error(&self)->Option<Error>{
-        self.deref_mut_metadata(|c|{
-            c.error.take()
-        })
+    pub fn rem_input(&self) -> Option<Box<dyn Any>> {
+        self.deref_mut_metadata(|c| c.input.take())
     }
-    pub fn deref_mut_plan<Out, H: FnOnce(&mut Box<dyn Plan + Sync + 'static>) -> Out>(&self, function: H) -> Out {
+    pub fn insert_error(&self, err: anyhow::Error) {
+        let err = err
+            .downcast::<Error>()
+            .unwrap_or_else(|e| Error::AnyhowError(e));
+        self.deref_mut_metadata(|c| c.error = Some(err));
+    }
+    pub fn rem_error(&self) -> Option<Error> {
+        self.deref_mut_metadata(|c| c.error.take())
+    }
+    pub fn deref_mut_plan<Out, H: FnOnce(&mut Box<dyn Plan + Sync + 'static>) -> Out>(
+        &self,
+        function: H,
+    ) -> Out {
         let mut lock = self.plan.synchronize();
         function(lock.deref_mut())
     }
-    pub fn unsafe_mut_plan<Out, H: FnOnce(&mut Box<dyn Plan + Sync + 'static>) -> Out>(&self, function: H) -> Out {
+    pub fn unsafe_mut_plan<Out, H: FnOnce(&mut Box<dyn Plan + Sync + 'static>) -> Out>(
+        &self,
+        function: H,
+    ) -> Out {
         unsafe {
             let c = self.plan.raw_ptr_mut();
             function(&mut *c)
         }
     }
-    pub fn clone_no_plan(&self)->Self{
+    pub fn clone_no_plan(&self) -> Self {
         let mut c = self.clone();
         c.plan = Arc::new(Am::new(Box::new(())));
         c
@@ -218,37 +226,40 @@ impl Ctx {
         self.env.clone()
     }
 
-    pub async fn set_any_error(&self,err:anyhow::Error){
-        let err = err.downcast::<Error>().unwrap_or_else(|e| Error::AnyhowError(e));
+    pub async fn set_any_error(&self, err: anyhow::Error) {
+        let err = err
+            .downcast::<Error>()
+            .unwrap_or_else(|e| Error::AnyhowError(e));
         // if let Err(e) = self.get_env().feedback_ext(err).await {
         //     wd_log::log_field("error",e).error("ctx.next return error and to env failed");
         // }
-        self.async_mut_metadata(|c|{
+        self.async_mut_metadata(|c| {
             c.error = Some(err);
             c.status = CtxStatus::Error;
             if let Some(w) = c.waker.take() {
                 w.wake();
             }
-            async {()}
-        }).await;
+            async { () }
+        })
+        .await;
     }
-    pub async fn success(&self){
-        self.async_mut_metadata(|c|{
+    pub async fn success(&self) {
+        self.async_mut_metadata(|c| {
             c.status = CtxStatus::SUCCESS;
             if let Some(w) = c.waker.take() {
                 w.wake();
             }
-            async {()}
-        }).await;
+            async { () }
+        })
+        .await;
     }
-    pub fn get_status(&self)->CtxStatus{
-        self.deref_mut_metadata(|c|c.status)
+    pub fn get_status(&self) -> CtxStatus {
+        self.deref_mut_metadata(|c| c.status)
     }
-    pub fn go<In: Any + Send>(self,input: In){
-        Engine::go(self,input)
+    pub fn go<In: Any + Send>(self, input: In) {
+        Engine::go(self, input)
     }
-    pub async fn run<In: Any + Send,Out:Any>(self, input: In) -> anyhow::Result<Out>{
-        Engine::run(self,input).await
+    pub async fn run<In: Any + Send, Out: Any>(self, input: In) -> anyhow::Result<Out> {
+        Engine::run(self, input).await
     }
-
 }

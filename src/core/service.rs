@@ -37,12 +37,19 @@ impl MapServiceLoader {
         self.map.insert(name.into(), Arc::new(service));
         self
     }
-    pub fn register_json_ext_service<N: Into<String>,T,In,Out>(mut self,name:N,service:T)-> Self
-    where T: JsonServiceExt<In,Out> + Sync + 'static,
-          In: serde::Serialize+serde::de::DeserializeOwned+Send+Sync+Default+'static,
-          Out: serde::Serialize+Send+Sync+'static,
+    pub fn register_json_ext_service<N: Into<String>, T, In, Out>(
+        mut self,
+        name: N,
+        service: T,
+    ) -> Self
+    where
+        T: JsonServiceExt<In, Out> + Sync + 'static,
+        In: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + Default + 'static,
+        Out: serde::Serialize + Send + Sync + 'static,
     {
-        self.map.insert(name.into(),JsonService::new(service).arc());self
+        self.map
+            .insert(name.into(), JsonService::new(service).arc());
+        self
     }
 }
 #[async_trait::async_trait]

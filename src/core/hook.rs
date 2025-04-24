@@ -1,5 +1,5 @@
-use std::future::Future;
 use crate::core::{Ctx, Engine, Error, NextPlan, Output, ServiceEntity};
+use std::future::Future;
 
 #[async_trait::async_trait]
 pub trait FlowCallback: Send {
@@ -18,23 +18,25 @@ where
 }
 
 impl Engine {
-    pub async fn base_hook(ctx:Ctx,se:ServiceEntity)->anyhow::Result<Output>{
+    pub async fn base_hook(ctx: Ctx, se: ServiceEntity) -> anyhow::Result<Output> {
         let node = se.node_name.clone();
         let rt = ctx.rt.clone();
         //处理返回结果
         let out = ctx.clone().next(se).await?;
         let node_key = node.clone();
-        ctx.clone().async_mut_metadata(|c|{
-            c.vars.insert(node_key,out);
-            //todo 状态检查
-            async {()}
-        }).await;
+        ctx.clone()
+            .async_mut_metadata(|c| {
+                c.vars.insert(node_key, out);
+                //todo 状态检查
+                async { () }
+            })
+            .await;
 
         //继续向下执行
         let no_plan_ctx = ctx.clone_no_plan();
-        let next = ctx.clone().deref_mut_plan(|c|{
-            c.next(no_plan_ctx,node.as_str())
-        })?;
+        let next = ctx
+            .clone()
+            .deref_mut_plan(|c| c.next(no_plan_ctx, node.as_str()))?;
         let nodes = match next {
             NextPlan::Nodes(nodes) => nodes,
             NextPlan::End => {
@@ -45,13 +47,13 @@ impl Engine {
                 return Ok(Output::default());
             }
         };
-        for mut i in nodes{
+        for mut i in nodes {
             if let Some(s) = rt.load_service(i.service_name.as_str()).await {
                 i = i.set_service(s);
-            }else{
-                return Err(Error::ServiceNotFound(i.service_name).into())
+            } else {
+                return Err(Error::ServiceNotFound(i.service_name).into());
             }
-            Engine::call_service(ctx.clone(),rt.clone(),i).await;
+            Engine::call_service(ctx.clone(), rt.clone(), i).await;
         }
         Ok(Output::default())
     }
