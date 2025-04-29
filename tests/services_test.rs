@@ -66,7 +66,7 @@ mod test {
     #[tokio::test]
     async fn single_services_test() {
         let plan = DAG::default()
-            .node(DAGNode::new("START").set_service_entity("start"))
+            .node(DAGNode::default().set_node_name("START").set_service_entity("start"))
             .nodes([("a", "sleep"), ("b", "sleep")])
             .node(("END", "end"))
             .edges([("START", "a"), ("START", "b")])

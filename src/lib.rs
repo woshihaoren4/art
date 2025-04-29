@@ -5,7 +5,7 @@ pub mod service;
 #[cfg(test)]
 mod test {
     use crate::core::{
-        Ctx, CtxSerdeExt, EngineRT, JsonInput, JsonServiceExt, MapServiceLoader, ServiceEntity,
+        Ctx, CtxSerdeExt, EngineRT, JsonServiceExt, MapServiceLoader, ServiceEntity,
     };
     use crate::plan::dag::DAG;
     use crate::service;
@@ -66,10 +66,10 @@ mod test {
             })
             .build();
         let plan = DAG::default().nodes([
-            (("start"),("start",JsonInput::try_from(r#"{"transform_rule":{"query":{"quote":"query"}}}"#).unwrap())),
-            (("m1"),("chat_model",JsonInput::try_from(r#"{"transform_rule":{"query":{"quote":"start.query"},"name":{"value":"chat_mode_1"}}}"#).unwrap())),
-            (("m2"),("chat_model",JsonInput::try_from(r#"{"transform_rule":{"query":{"quote":"start.query"},"name":{"value":"chat_mode_2"}}}"#).unwrap())),
-            (("end"),("end",JsonInput::try_from(r#"{"none_quote_skip":true,"transform_rule":{"answer1":{"quote":"m1.answer"},"answer2":{"quote":"m2.answer"}}}"#).unwrap())),
+            ("start",r#"{"service_name":"start","config":{"transform_rule":{"query":{"quote":"query"}}}}"#),
+            ("m1",r#"{"service_name":"chat_model","config":{"transform_rule":{"query":{"quote":"start.query"},"name":{"value":"chat_mode_1"}}}}"#),
+            ("m2",r#"{"service_name":"chat_model","config":{"transform_rule":{"query":{"quote":"start.query"},"name":{"value":"chat_mode_2"}}}}"#),
+            ("end",r#"{"service_name":"end","config":{"none_quote_skip":true,"transform_rule":{"answer1":{"quote":"m1.answer"},"answer2":{"quote":"m2.answer"}}}}"#),
         ]).edges([("start", "m1"), ("start", "m2")])
             .edges([("m1", "end"), ("m2", "end")])
             .check()

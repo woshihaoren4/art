@@ -1,23 +1,35 @@
-use crate::core::{Ctx, NextPlan, Plan, ServiceEntity};
+use crate::core::{Ctx, NextPlan, Plan, ServiceEntity, ServiceEntityJson};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::mem::take;
 use wd_tools::PFErr;
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default,Debug,Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DAGNode {
     pub node_name: String,
     pub from: Vec<String>,
     pub to: Vec<String>,
-    #[serde(skip)]
-    pub service: Option<ServiceEntity>,
+    pub service: Option<ServiceEntityJson>,
 }
 impl DAGNode {
+    #[allow(unused)]
+    pub fn try_from_str(s:&str)->anyhow::Result<Self>{
+        let n = serde_json::from_str(s)?;Ok(n)
+    }
     pub fn new<S: Into<String>>(node_name: S) -> Self {
         Self {
             node_name: node_name.into(),
             ..Default::default()
         }
+    }
+    pub fn set_node_name<S: Into<String>>(mut self,node_name: S) -> Self {
+        let node_name= node_name.into();
+        if let Some(ref mut s) = self.service{
+            s.node_name = node_name.clone();
+        }
+        self.node_name = node_name;
+        self
     }
     pub fn set_from<T: Into<String>>(mut self, from: Vec<T>) -> Self {
         let from = from.into_iter().map(|x| x.into()).collect::<Vec<String>>();
@@ -53,7 +65,8 @@ impl DAGNode {
             self.from.remove(index);
         }
         if self.from.is_empty() {
-            self.service.take()
+            let sej = self.service.take()?;
+            Some(sej.into())
         } else {
             None
         }
@@ -80,21 +93,26 @@ impl DAGNode {
         }
         false
     }
-    pub fn set_service_entity<E: Into<ServiceEntity>>(mut self, service: E) -> Self {
+    pub fn set_service_entity<E: Into<ServiceEntityJson>>(mut self, service: E) -> Self {
         let se = service.into().set_node_name(self.node_name.to_string());
         self.service = Some(se);
         self
     }
 }
-impl<N: Into<String>, E: Into<ServiceEntity>> From<(N, E)> for DAGNode {
+impl<N: Into<String>, E: Into<ServiceEntityJson>> From<(N, E)> for DAGNode {
     fn from((n, e): (N, E)) -> Self {
-        let n = Self::new(n);
+        let n = Self::default().set_node_name(n);
         let e = e.into().set_node_name(n.node_name.clone());
         n.set_service_entity(e)
     }
 }
+impl From<&str> for DAGNode {
+    fn from(value: &str) -> Self {
+        serde_json::from_str::<DAGNode>(value).unwrap_or(DAGNode::default())
+    }
+}
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default,Debug,Clone, Serialize, Deserialize)]
 pub struct DAG {
     pub start: String,
     pub end: String,
@@ -115,7 +133,8 @@ impl Plan for DAG {
 
     fn get(&mut self, name: &str) -> Option<ServiceEntity> {
         if let Some(n) = self.node_set.get_mut(name) {
-            n.service.take()
+            let sej = n.service.take()?;
+            Some(ServiceEntity::from(sej))
         } else {
             None
         }
@@ -169,14 +188,14 @@ impl DAG {
         } else {
             self.node_set.insert(
                 from.clone(),
-                DAGNode::new(from.clone()).set_to(vec![to.clone()]),
+                DAGNode::default().set_node_name(from.clone()).set_to(vec![to.clone()]),
             );
         }
         if let Some(n) = self.node_set.get_mut(to.as_str()) {
             n.add_from(from);
         } else {
             self.node_set
-                .insert(to.clone(), DAGNode::new(to).set_from(vec![from]));
+                .insert(to.clone(), DAGNode::default().set_node_name(to).set_from(vec![from]));
         }
         self
     }
@@ -207,7 +226,14 @@ impl DAG {
         }
         //检查中间节点
         for (k, v) in self.node_set.iter() {
-            if v.service.is_none() {
+            if let Some(ref s) = v.service {
+                if s.service_name.is_empty() {
+                    return anyhow::anyhow!("node[{}].service.name is empty", k).err();
+                }
+                if s.node_name.is_empty() {
+                    return anyhow::anyhow!("node[{}].service.node is empty", k).err();
+                }
+            }else{
                 return anyhow::anyhow!("node[{}].service is empty", k).err();
             }
             if v.node_name == self.start {
