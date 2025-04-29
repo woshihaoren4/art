@@ -1,23 +1,50 @@
 use serde_json::Value;
-use crate::core::{Ctx, JsonServiceExt, Plan, ServiceEntity};
+use wd_tools::PFErr;
+use crate::core::{Ctx, JsonServiceExt, ServiceEntity};
+use crate::plan::dag::DAG;
 use crate::service::custom::Obj;
 
-pub struct Workflow<T> {
-    pub plan: T,
+#[derive(Debug,Default,serde::Serialize,serde::Deserialize)]
+#[serde(tag = "type")]
+pub enum  WorkflowPlan{
+    #[default]
+    None,
+    DAG(DAG),
+    GRAPH,
 }
 
+#[derive(Debug,Default,serde::Serialize,serde::Deserialize)]
+pub struct WorkflowConfig {
+    pub plan : WorkflowPlan,
+    pub input : Obj,
+}
+
+pub struct Workflow {}
+
 #[async_trait::async_trait]
-impl<T:Plan + Clone + Sync + 'static> JsonServiceExt<Obj, Value> for Workflow<T> {
-    async fn call(&self, ctx: Ctx, input: Obj, _se: ServiceEntity) -> anyhow::Result<Value> {
-        ctx.fork(self.plan.clone()).run(input).await
+impl JsonServiceExt<WorkflowConfig, Value> for Workflow {
+    async fn call(&self, ctx: Ctx, cfg: WorkflowConfig, se: ServiceEntity) -> anyhow::Result<Value> {
+        let input = cfg.input;
+        println!("--->{:?}",input);
+        match cfg.plan {
+            WorkflowPlan::None => {
+                return anyhow::anyhow!("[Workflow::{}] plan is nil",se.node_name).err()
+            }
+            WorkflowPlan::DAG(dag) => {
+                ctx.fork(dag)
+            }
+            WorkflowPlan::GRAPH => {
+                return anyhow::anyhow!("[Workflow::{}] not support graph",se.node_name).err()
+            }
+        }
+            .run::<Value,_>(input.into()).await
+
     }
 }
 
-impl<T> Workflow<T> {
-    pub fn new(plan:T)->Self{
-        Self{
-            plan
-        }
+impl Workflow{
+    pub fn new()->Self{
+        Self{}
     }
 }
 
@@ -27,7 +54,7 @@ mod test{
     use crate::core::{Ctx, CtxSerdeExt, EngineRT, MapServiceLoader, ServiceEntity};
     use crate::plan::dag::DAG;
     use crate::service;
-    use crate::service::agent::Workflow;
+    use crate::service::agent::{Workflow, WorkflowPlan};
 
     #[tokio::test]
     async fn test_workflow(){
@@ -40,14 +67,7 @@ mod test{
         struct AddResponse{
             res:usize,
         }
-        let plan = DAG::default().nodes([
-            ("start",r#"{"service_name":"start","config":{"transform_rule":{"a":{"quote":"a"}}}}"#),
-            ("add",r#"{"service_name":"add","config":{"transform_rule":{"a":{"quote":"start.a"},"b":{"value":1}}}}"#),
-            ("end",r#"{"service_name":"end","config":{"none_quote_skip":true,"transform_rule":{"res":{"quote":"add.res"}}}}"#),
-        ]).edges([("start", "add"), ("add", "end")])
-            .check()
-            .unwrap();
-        let add_1_workflow = Workflow::new(plan);
+
         let rt = EngineRT::default()
             .set_service_loader(
                 MapServiceLoader::default()
@@ -56,7 +76,7 @@ mod test{
                     .register_json_ext_service("add",|_ctx:Ctx,input:AddRequest,_se:ServiceEntity|async move{
                         Ok(AddResponse{res:input.a+input.b})
                     })
-                    .register_json_ext_service("add_1_workflow",add_1_workflow)
+                    .register_json_ext_service("workflow",Workflow::new())
             )
             .append_service_middle(|ctx: Ctx, se| {
                 println!("执行一个service:{}", se);
@@ -70,12 +90,26 @@ mod test{
             })
             .build();
 
+        let wdag = DAG::default().nodes([
+            ("start",r#"{"service_name":"start","config":{"transform_rule":{"a":{"quote":"a"}}}}"#),
+            ("add",r#"{"service_name":"add","config":{"transform_rule":{"a":{"quote":"start.a"},"b":{"value":1}}}}"#),
+            ("end",r#"{"service_name":"end","config":{"none_quote_skip":true,"transform_rule":{"res":{"quote":"add.res"}}}}"#),
+        ]).edges([("start", "add"), ("add", "end")])
+            .check()
+            .unwrap();
+        let wplan = WorkflowPlan::DAG(wdag);
+        let wplan = serde_json::to_string(&wplan).unwrap();
+
+        let workflow_cfg = format!("{{\"service_name\":\"workflow\",\"config\":{{\"transform_rule\":{{\"plan\":{{\"value\":{}}},\"input.a\":{{\"quote\":\"add.res\"}}}}}}}}",wplan);
+
+        println!("--->workflow config:\n{}\n<---",workflow_cfg);
+
         let plan = DAG::default().nodes([
             ("start",r#"{"service_name":"start","config":{"transform_rule":{"a":{"quote":"a"}}}}"#),
             ("add",r#"{"service_name":"add","config":{"transform_rule":{"a":{"quote":"start.a"},"b":{"value":1}}}}"#),
-            ("add_1_workflow",r#"{"service_name":"add_1_workflow","config":{"transform_rule":{"a":{"quote":"add.res"}}}}"#),
-            ("end",r#"{"service_name":"end","config":{"none_quote_skip":true,"transform_rule":{"res":{"quote":"add_1_workflow.res"}}}}"#),
-        ]).edges([("start", "add"), ("add", "add_1_workflow"), ("add_1_workflow", "end")])
+            ("workflow_add",workflow_cfg.as_str()),
+            ("end",r#"{"service_name":"end","config":{"none_quote_skip":true,"transform_rule":{"res":{"quote":"workflow_add.res"}}}}"#),
+        ]).edges([("start", "add"), ("add", "workflow_add"), ("workflow_add", "end")])
             .check()
             .unwrap();
         let res = rt

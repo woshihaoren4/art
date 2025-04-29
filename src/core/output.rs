@@ -1,7 +1,7 @@
 use crate::core::Ctx;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::any::{type_name, Any};
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
@@ -207,7 +207,9 @@ impl JsonInput {
                 if ss.len() == 1 {
                     map.insert(ss[0].to_string(), val);
                 } else {
-                    return Self::insert_val_to_json_val(t, ss[1], val);
+                    let mut new_val= Value::Object(Map::new());
+                    Self::insert_val_to_json_val(&mut new_val, ss[1], val)?;
+                    map.insert(ss[0].to_string(),new_val);
                 }
                 Ok(())
             }
