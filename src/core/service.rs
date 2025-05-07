@@ -24,6 +24,14 @@ pub trait ServiceLoader: Send {
     async fn load(&self, name: &str) -> Option<Arc<dyn Service + Sync + 'static>>;
 }
 
+#[async_trait::async_trait]
+impl ServiceLoader for () {
+    async fn load(&self, _name: &str) -> Option<Arc<dyn Service + Sync + 'static>> {
+        None
+    }
+}
+
+
 #[derive(Default)]
 pub struct MapServiceLoader {
     pub map: HashMap<String, Arc<dyn Service + Sync + 'static>>,

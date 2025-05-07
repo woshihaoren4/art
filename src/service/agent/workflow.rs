@@ -25,7 +25,6 @@ pub struct Workflow {}
 impl JsonServiceExt<WorkflowConfig, Value> for Workflow {
     async fn call(&self, ctx: Ctx, cfg: WorkflowConfig, se: ServiceEntity) -> anyhow::Result<Value> {
         let input = cfg.input;
-        println!("--->{:?}",input);
         match cfg.plan {
             WorkflowPlan::None => {
                 return anyhow::anyhow!("[Workflow::{}] plan is nil",se.node_name).err()
