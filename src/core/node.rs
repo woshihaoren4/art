@@ -97,9 +97,9 @@ impl ServiceEntity {
 }
 
 #[derive(Debug,Default,Clone,Serialize,Deserialize)]
+#[serde(default)]
 pub struct ServiceEntityJson {
     pub service_name: String,
-    #[serde(default)]
     pub node_name: String,
     pub config: JsonInput,
 }

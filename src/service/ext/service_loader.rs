@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use crate::core::{Ctx, JsonService, JsonServiceExt, MapServiceLoader, Service, ServiceEntity, ServiceLoader};
+use crate::core::{JsonServiceExt, MapServiceLoader, Service, ServiceLoader};
 use crate::service;
 use crate::service::agent::Workflow;
 
@@ -17,9 +17,11 @@ impl ServiceLoaderWrap{
     pub fn set_map_loader(mut self,msl:MapServiceLoader)->Self{
         self.map_loader = msl;self
     }
+    #[allow(unused)]
     pub fn set_service_loader<T:ServiceLoader + Sync  + 'static>(mut self,loader:T)->Self{
         self.service_loader = Arc::new(loader);self
     }
+    #[allow(unused)]
     pub fn register_service<N: Into<String>, S: Service + Sync + 'static>(
         mut self,
         name: N,
@@ -27,6 +29,7 @@ impl ServiceLoaderWrap{
     ) -> Self {
         self.map_loader = self.map_loader.register_service(name, service);self
     }
+    #[allow(unused)]
     pub fn register_json_ext_service<N: Into<String>, T, In, Out>(
         mut self,
         name: N,
