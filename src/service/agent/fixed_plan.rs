@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::core::{Ctx, JsonServiceExt, Plan, ServiceEntity};
-use crate::service::custom::Obj;
+use crate::service::ext::Obj;
 
 pub struct FixedPlan<T> {
     pub plan: T,
@@ -26,8 +26,8 @@ mod test{
     use serde::{Deserialize, Serialize};
     use crate::core::{Ctx, CtxSerdeExt, EngineRT, MapServiceLoader, ServiceEntity};
     use crate::plan::dag::DAG;
-    use crate::service;
     use crate::service::agent::FixedPlan;
+    use crate::service::flow::{End, Start};
 
     #[tokio::test]
     async fn test_workflow(){
@@ -51,8 +51,8 @@ mod test{
         let rt = EngineRT::default()
             .set_service_loader(
                 MapServiceLoader::default()
-                    .register_json_ext_service("start", service::custom::Start {})
-                    .register_json_ext_service("end", service::custom::End {})
+                    .register_json_ext_service("start", Start {})
+                    .register_json_ext_service("end", End {})
                     .register_json_ext_service("add",|_ctx:Ctx,input:AddRequest,_se:ServiceEntity|async move{
                         Ok(AddResponse{res:input.a+input.b})
                     })

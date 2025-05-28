@@ -161,6 +161,12 @@ impl Plan for DAG {
         }
         Ok(NextPlan::Nodes(next))
     }
+
+    fn set_to(&mut self, name: &str, to: Vec<String>) {
+        if let Some(s) = self.node_set.get_mut(name) {
+            s.to = to;
+        }
+    }
 }
 impl DAG {
     pub fn node<Node: Into<DAGNode>>(mut self, node: Node) -> Self {

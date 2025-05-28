@@ -283,12 +283,19 @@ impl Plan for Graph {
         }
         Ok(NextPlan::Nodes(next))
     }
+
+    fn set_to(&mut self, name: &str, to: Vec<String>) {
+        if let Some(s) = self.node_set.get_mut(name) {
+            s.to = to;
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::core::Plan;
+    use crate::core::{EngineRT, Plan};
     use crate::plan::graph::Graph;
+    use crate::service::ext::ServiceLoaderWrap;
 
     #[test]
     fn test_graph() {
@@ -314,5 +321,46 @@ mod test {
         );
         println!("{}",graph.show_plan());
         println!("success");
+    }
+
+    #[tokio::test]
+    async fn test_select_graph() {
+        let rt = EngineRT::default()
+            .set_service_loader(
+                ServiceLoaderWrap::default()
+            ).build();
+        let select = r#"
+{
+    {"number":{"quote":"number"}},
+}
+        "#;        
+        let select = r#"
+ {
+	"conditions": {
+		"cond": {
+			"cond": "and",
+			"sub": [{
+				"cond": {
+					"cond": "equal",
+					"sub": [{
+						"value": 123
+					}, {
+						"value": "456"
+					}]
+				}
+			}]
+		}
+	},
+	"true_to_nodes": ["A"],
+	"false_to_nodes": ["B"]
+}
+        "#;
+        
+        let plan = Graph::default()
+            .node(("start",r#"{"service_name":"start"},"config":{"transform_rule":{"number":{"quote":"number"}}}}"#))
+            .node(("select", r#"{"service_name":"flow_select","config":{"transform_rule":{"conditions":{"value":"equal"},"true_to_nodes":["A"],"false_to_nodes":["B"]}}}"#))
+            .node(("end", r#"{"service_name":"end"}"#))
+            .check()
+            .unwrap();
     }
 }

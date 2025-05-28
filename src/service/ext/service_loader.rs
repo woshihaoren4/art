@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use crate::core::{JsonServiceExt, MapServiceLoader, Service, ServiceLoader};
-use crate::service;
 use crate::service::agent::Workflow;
+use crate::service::flow::{End, Select, Start};
 
 pub struct ServiceLoaderWrap{
     pub map_loader : MapServiceLoader,
@@ -47,9 +47,10 @@ impl Default for ServiceLoaderWrap {
     fn default() -> Self {
         Self::new()
             .set_map_loader(MapServiceLoader::default()
-                .register_json_ext_service("start", service::custom::Start {})
-                .register_json_ext_service("end", service::custom::End {})
-                .register_json_ext_service("workflow",Workflow::new()))
+                .register_json_ext_service("start", Start {})
+                .register_json_ext_service("end", End {})
+                .register_json_ext_service("workflow",Workflow::new())
+                .register_json_ext_service("flow_select",Select::default()))
 
     }
 }

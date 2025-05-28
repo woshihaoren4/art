@@ -1,6 +1,6 @@
 use crate::core::{Ctx, JsonServiceExt, Output, ServiceEntity};
 use serde_json::{Value};
-use crate::service::custom::Obj;
+use crate::service::ext::Obj;
 
 #[derive(Default, Debug)]
 pub struct End {}

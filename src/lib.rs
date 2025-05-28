@@ -1,6 +1,7 @@
 pub mod core;
 pub mod plan;
 pub mod service;
+mod utils;
 
 #[cfg(test)]
 mod test {
@@ -11,6 +12,8 @@ mod test {
     use crate::service;
     use serde::{Deserialize, Serialize};
     use wd_tools::PFOk;
+    use crate::plan::graph::Graph;
+    use crate::service::ext::ServiceLoaderWrap;
 
     #[derive(Serialize, Deserialize, Default)]
     struct ChatModelReq {
@@ -49,10 +52,8 @@ mod test {
     async fn simple_test() {
         let rt = EngineRT::default()
             .set_service_loader(
-                MapServiceLoader::default()
+                ServiceLoaderWrap::default()
                     .register_json_ext_service("chat_model", ChatModel::default())
-                    .register_json_ext_service("start", service::custom::Start {})
-                    .register_json_ext_service("end", service::custom::End {}),
             )
             .append_service_middle(|ctx: Ctx, se| {
                 println!("执行一个service:{}", se);
@@ -65,7 +66,7 @@ mod test {
                 Ok(())
             })
             .build();
-        let plan = DAG::default().nodes([
+        let plan = Graph::default().nodes([
             ("start",r#"{"service_name":"start","config":{"transform_rule":{"query":{"quote":"query"}}}}"#),
             ("m1",r#"{"service_name":"chat_model","config":{"transform_rule":{"query":{"quote":"start.query"},"name":{"value":"chat_mode_1"}}}}"#),
             ("m2",r#"{"service_name":"chat_model","config":{"transform_rule":{"query":{"quote":"start.query"},"name":{"value":"chat_mode_2"}}}}"#),
