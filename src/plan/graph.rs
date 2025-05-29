@@ -1,21 +1,22 @@
-use std::collections::HashMap;
+use crate::core::{Ctx, JsonInput, NextPlan, Plan, ServiceEntity, ServiceEntityJson};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use wd_tools::PFErr;
-use crate::core::{Ctx, NextPlan, Plan, ServiceEntity, ServiceEntityJson};
 
-#[derive(Default,Debug,Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GraphNode {
-    pub in_degree:i32,
+    pub in_degree: i32,
     pub node_name: String,
     pub from: Vec<String>,
-    pub from_completed:Vec<String>,
+    pub from_completed: Vec<String>,
     pub to: Vec<String>,
     pub service: ServiceEntityJson,
 }
 impl GraphNode {
-    pub fn try_from_str(s:&str)->anyhow::Result<Self>{
-        let n = serde_json::from_str(s)?;Ok(n)
+    pub fn try_from_str(s: &str) -> anyhow::Result<Self> {
+        let n = serde_json::from_str(s)?;
+        Ok(n)
     }
     pub fn new<S: Into<String>>(node_name: S) -> Self {
         Self {
@@ -23,8 +24,8 @@ impl GraphNode {
             ..Default::default()
         }
     }
-    pub fn set_node_name<S: Into<String>>(mut self,node_name: S) -> Self {
-        let node_name= node_name.into();
+    pub fn set_node_name<S: Into<String>>(mut self, node_name: S) -> Self {
+        let node_name = node_name.into();
         self.service.node_name = node_name.clone();
         self.node_name = node_name;
         self
@@ -45,7 +46,7 @@ impl GraphNode {
     }
     pub fn from_completed(&mut self, f: &str) -> Option<ServiceEntityJson> {
         if self.from.is_empty() {
-            return Some(self.get_service_entity())
+            return Some(self.get_service_entity());
         }
         if self.from_completed.is_empty() {
             self.from_completed = self.from.clone();
@@ -61,7 +62,7 @@ impl GraphNode {
             self.from_completed.remove(index);
         }
         if self.from_completed.is_empty() {
-            return Some(self.get_service_entity())
+            return Some(self.get_service_entity());
         }
         None
     }
@@ -92,6 +93,17 @@ impl GraphNode {
         self.service = se;
         self
     }
+    pub fn set_service_entity_json<S: Into<String>, J: Into<JsonInput>>(
+        self,
+        service_name: S,
+        input: J,
+    ) -> Self {
+        self.set_service_entity(
+            ServiceEntityJson::default()
+                .set_service_name(service_name)
+                .set_config(input),
+        )
+    }
     pub fn get_service_entity(&mut self) -> ServiceEntityJson {
         self.service.clone()
     }
@@ -107,13 +119,15 @@ impl<N: Into<String>, E: Into<ServiceEntityJson>> From<(N, E)> for GraphNode {
 impl From<&str> for GraphNode {
     fn from(value: &str) -> Self {
         GraphNode::try_from_str(value).unwrap_or_else(|e| {
-            wd_log::log_field("error", e).field("node", "GraphNode").error("GraphNode from str parse failed");
+            wd_log::log_field("error", e)
+                .field("node", "GraphNode")
+                .error("GraphNode from str parse failed");
             GraphNode::default()
         })
     }
 }
 
-#[derive(Default,Debug,Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Graph {
     pub start: String,
     pub end: String,
@@ -121,10 +135,10 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn get_service_entity(&mut self,node_name:&str) -> Option<ServiceEntityJson> {
+    pub fn get_service_entity(&mut self, node_name: &str) -> Option<ServiceEntityJson> {
         if let Some(n) = self.node_set.get_mut(node_name) {
             Some(n.get_service_entity())
-        }else{
+        } else {
             None
         }
     }
@@ -153,7 +167,9 @@ impl Graph {
         } else {
             self.node_set.insert(
                 from.clone(),
-                GraphNode::default().set_node_name(from.clone()).set_to(vec![to.clone()]),
+                GraphNode::default()
+                    .set_node_name(from.clone())
+                    .set_to(vec![to.clone()]),
             );
         }
         if let Some(_n) = self.node_set.get_mut(to.as_str()) {
@@ -181,47 +197,52 @@ impl Graph {
         self.end = name.into();
         self
     }
-    fn update_in_degree(&mut self,start:&str)->anyhow::Result<()>{
-        let to = if let Some(n) = self.node_set.get_mut(start){
-            n.in_degree +=1;
+    fn update_in_degree(&mut self, start: &str) -> anyhow::Result<()> {
+        let to = if let Some(n) = self.node_set.get_mut(start) {
+            n.in_degree += 1;
             if n.in_degree > 1 {
-                return Ok(())
+                return Ok(());
             }
             if n.to.is_empty() {
                 return if n.node_name == self.end {
                     Ok(())
                 } else {
-                    anyhow::anyhow!("There is an unknown end node[{}]",start).err()
-                }
+                    anyhow::anyhow!("There is an unknown end node[{}]", start).err()
+                };
             }
             n.to.clone()
-        }else{
-            return anyhow::anyhow!("not found node[{}]",start).err()
+        } else {
+            return anyhow::anyhow!("not found node[{}]", start).err();
         };
-        for i in to{
+        for i in to {
             self.update_in_degree(i.as_str())?;
         }
         Ok(())
     }
-    fn check_from(&self)->anyhow::Result<()>{
-        for (n,i) in self.node_set.iter(){
-            for e in i.from.iter(){
+    fn check_from(&self) -> anyhow::Result<()> {
+        for (n, i) in self.node_set.iter() {
+            for e in i.from.iter() {
                 if let Some(s) = self.node_set.get(e) {
                     if !s.have_to(e) {
-                        return anyhow::anyhow!("node[{n}] prerequisite requirements [{e}], but node[{e}] no to [n]").err()
+                        return anyhow::anyhow!(
+                            "node[{n}] prerequisite requirements [{e}], but node[{e}] no to [n]"
+                        )
+                        .err();
                     }
                 }
             }
         }
         Ok(())
     }
-    fn check_service(&self)->anyhow::Result<()>{
-        for (n,i) in self.node_set.iter(){
+    fn check_service(&self) -> anyhow::Result<()> {
+        for (n, i) in self.node_set.iter() {
             if i.service.service_name.is_empty() {
-                return anyhow::anyhow!("{}.service[{}] not defined",n, i.service.service_name).err()
+                return anyhow::anyhow!("{}.service[{}] not defined", n, i.service.service_name)
+                    .err();
             }
             if i.service.node_name.is_empty() {
-                return anyhow::anyhow!("{}.node_name[{}] not defined",n, i.service.node_name).err()
+                return anyhow::anyhow!("{}.node_name[{}] not defined", n, i.service.node_name)
+                    .err();
             }
         }
         Ok(())
@@ -259,7 +280,7 @@ impl Plan for Graph {
     }
 
     fn get(&mut self, name: &str) -> Option<ServiceEntity> {
-        self.get_service_entity(name).map(|x|x.into())
+        self.get_service_entity(name).map(|x| x.into())
     }
 
     fn next(&mut self, _ctx: Ctx, name: &str) -> anyhow::Result<NextPlan> {
@@ -274,7 +295,7 @@ impl Plan for Graph {
         let mut next = vec![];
         for i in to {
             if let Some(n) = self.node_set.get_mut(i.as_str()) {
-                if let Some(s) = n.from_completed(i.as_str()){
+                if let Some(s) = n.from_completed(i.as_str()) {
                     next.push(s.into());
                 }
             } else {
@@ -293,9 +314,11 @@ impl Plan for Graph {
 
 #[cfg(test)]
 mod test {
-    use crate::core::{EngineRT, Plan};
-    use crate::plan::graph::Graph;
+    use serde::{Deserialize, Serialize};
+    use crate::core::{CtxSerdeExt, EngineRT, JsonInput, Plan};
+    use crate::plan::graph::{Graph, GraphNode};
     use crate::service::ext::ServiceLoaderWrap;
+    use serde_json::json;
 
     #[test]
     fn test_graph() {
@@ -304,7 +327,11 @@ mod test {
             .node(("A", r#"{"service_name":"a"}"#))
             .node(("B", r#"{"service_name":"b"}"#))
             .node(("C", r#"{"service_name":"c"}"#))
-            .nodes([("D", r#"{"service_name":"d"}"#), ("E", r#"{"service_name":"e"}"#), ("F", r#"{"service_name":"f"}"#)])
+            .nodes([
+                ("D", r#"{"service_name":"d"}"#),
+                ("E", r#"{"service_name":"e"}"#),
+                ("F", r#"{"service_name":"f"}"#),
+            ])
             .nodes([("end", r#"{"service_name":"end"}"#)])
             .edge("start", "A")
             .edge("start", "B")
@@ -319,47 +346,61 @@ mod test {
             graph.start_node_name(),
             graph.end_node_name()
         );
-        println!("{}",graph.show_plan());
+        println!("{}", graph.show_plan());
         println!("success");
     }
 
     #[tokio::test]
     async fn test_select_graph() {
+        #[derive(Default, Debug, Clone, Serialize, Deserialize)]
+        #[serde(default)]
+        struct AddInOut{
+            a:isize,
+            b:isize,
+            result:isize,
+        }
         let rt = EngineRT::default()
-            .set_service_loader(
-                ServiceLoaderWrap::default()
-            ).build();
-        let select = r#"
-{
-    {"number":{"quote":"number"}},
-}
-        "#;        
-        let select = r#"
- {
-	"conditions": {
-		"cond": {
-			"cond": "and",
-			"sub": [{
-				"cond": {
-					"cond": "equal",
-					"sub": [{
-						"value": 123
-					}, {
-						"value": "456"
-					}]
-				}
-			}]
-		}
-	},
-	"true_to_nodes": ["A"],
-	"false_to_nodes": ["B"]
-}
-        "#;
-        
+            .set_service_loader(ServiceLoaderWrap::default()
+                .register_json_ext_service("add",|_ctx, mut io:AddInOut, _se|async move{
+                    io.result = io.a + io.b;
+                    Ok(io)
+                }))
+            .build();
+        let select_cfg = json!({
+        "conditions": {
+            "cond": {
+                "cond": "and",
+                "sub": [{
+                    "cond": {
+                        "cond": "greater",
+                        "sub": [{
+                            "value": "${{start.number}}"
+                        }, {
+                            "value": 666
+                        }]
+                    }
+                }]
+            }
+        },
+        "true_to_nodes": ["A"],
+        "false_to_nodes": ["B"]
+        });
+        let a_cfg = json!({
+            "a":"${{start.number}}",
+            "b":1,
+        });
+        let b_cfg = json!({
+            "a":"${{start.number}}",
+            "b":-1,
+        });
+
         let plan = Graph::default()
-            .node(("start",r#"{"service_name":"start"},"config":{"transform_rule":{"number":{"quote":"number"}}}}"#))
-            .node(("select", r#"{"service_name":"flow_select","config":{"transform_rule":{"conditions":{"value":"equal"},"true_to_nodes":["A"],"false_to_nodes":["B"]}}}"#))
-            .node(("end", r#"{"service_name":"end"}"#))
+            .node(("start",r#"{"service_name":"start","config":{"transform_rule":{"number":{"quote":"number"}}}}"#))
+            .node(GraphNode::new("select").set_service_entity_json("flow_select",JsonInput::default().set_default_json(select_cfg)))
+            .node(GraphNode::new("A").set_service_entity_json("add",JsonInput::default().set_default_json(a_cfg)))
+            .node(GraphNode::new("B").set_service_entity_json("add",JsonInput::default().set_default_json(b_cfg)))
+            .node(("end", r#"{"service_name":"end","config":{"transform_rule":{"result":{"quote":"number"}}}}"#))
+            .edges([("start","select"),("select","A"),("select","B"),("A","end"),("B","end")])
             .check()
             .unwrap();
     }

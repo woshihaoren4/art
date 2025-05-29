@@ -1,8 +1,8 @@
 use crate::core::{EmptyServiceImpl, JsonInput, Service};
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 pub struct ServiceEntity {
     pub(crate) middle_index: usize,
@@ -96,7 +96,7 @@ impl ServiceEntity {
     }
 }
 
-#[derive(Debug,Default,Clone,Serialize,Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServiceEntityJson {
     pub service_name: String,
@@ -108,10 +108,10 @@ impl TryFrom<ServiceEntity> for ServiceEntityJson {
 
     fn try_from(value: ServiceEntity) -> Result<Self, Self::Error> {
         if value.config.downcast_ref::<JsonInput>().is_none() {
-            return Err(value)
+            return Err(value);
         }
         let config = value.config.downcast::<JsonInput>().unwrap();
-        Ok(ServiceEntityJson{
+        Ok(ServiceEntityJson {
             service_name: value.service_name,
             node_name: value.node_name,
             config: *config,
@@ -128,8 +128,9 @@ impl From<ServiceEntityJson> for ServiceEntity {
 }
 
 impl ServiceEntityJson {
-    pub fn try_from_str(s:&str)->anyhow::Result<Self>{
-        let sej = serde_json::from_str::<ServiceEntityJson>(s)?;Ok(sej)
+    pub fn try_from_str(s: &str) -> anyhow::Result<Self> {
+        let sej = serde_json::from_str::<ServiceEntityJson>(s)?;
+        Ok(sej)
     }
     pub fn set_node_name<S: Into<String>>(mut self, name: S) -> Self {
         self.node_name = name.into();
@@ -139,7 +140,7 @@ impl ServiceEntityJson {
         self.service_name = name.into();
         self
     }
-    pub fn set_config<C:Into<JsonInput>>(mut self, config: C) -> Self {
+    pub fn set_config<C: Into<JsonInput>>(mut self, config: C) -> Self {
         self.config = config.into();
         self
     }

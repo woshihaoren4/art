@@ -214,9 +214,8 @@ impl Ctx {
         c.plan = Arc::new(Am::new(Box::new(())));
         c
     }
-    pub fn fork<P: Plan + Sync + 'static>(&self,p:P)->Self{
-        let ctx = Self::new(self.rt.clone(),p)
-            .set_env(self.env.clone());
+    pub fn fork<P: Plan + Sync + 'static>(&self, p: P) -> Self {
+        let ctx = Self::new(self.rt.clone(), p).set_env(self.env.clone());
         ctx
     }
     // pub(crate) fn set_waker(self, waker: Waker) -> Self {

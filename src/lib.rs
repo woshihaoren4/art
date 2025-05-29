@@ -5,15 +5,11 @@ mod utils;
 
 #[cfg(test)]
 mod test {
-    use crate::core::{
-        Ctx, CtxSerdeExt, EngineRT, JsonServiceExt, MapServiceLoader, ServiceEntity,
-    };
-    use crate::plan::dag::DAG;
-    use crate::service;
-    use serde::{Deserialize, Serialize};
-    use wd_tools::PFOk;
+    use crate::core::{Ctx, CtxSerdeExt, EngineRT, JsonServiceExt, ServiceEntity};
     use crate::plan::graph::Graph;
     use crate::service::ext::ServiceLoaderWrap;
+    use serde::{Deserialize, Serialize};
+    use wd_tools::PFOk;
 
     #[derive(Serialize, Deserialize, Default)]
     struct ChatModelReq {
@@ -53,7 +49,7 @@ mod test {
         let rt = EngineRT::default()
             .set_service_loader(
                 ServiceLoaderWrap::default()
-                    .register_json_ext_service("chat_model", ChatModel::default())
+                    .register_json_ext_service("chat_model", ChatModel::default()),
             )
             .append_service_middle(|ctx: Ctx, se| {
                 println!("执行一个service:{}", se);

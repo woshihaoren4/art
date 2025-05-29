@@ -20,8 +20,8 @@ pub trait Plan: Send {
     }
     fn get(&mut self, name: &str) -> Option<ServiceEntity>;
     fn next(&mut self, ctx: Ctx, name: &str) -> anyhow::Result<NextPlan>;
-    
-    fn set_to(&mut self,_name:&str,_to:Vec<String>){}
+
+    fn set_to(&mut self, _name: &str, _to: Vec<String>) {}
 }
 
 impl Plan for () {

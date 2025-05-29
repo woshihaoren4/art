@@ -1,17 +1,16 @@
 use crate::core::Ctx;
+use crate::utils::string;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::any::{type_name, Any};
+use std::any::{type_name, Any, TypeId};
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use wd_tools::{PFErr, PFOk};
-use crate::utils::string;
 
-pub trait OutputObject {
-    fn type_name(&self) -> &'static str {
-        std::any::type_name::<Self>().into()
-    }
+pub trait OutputObject where Self: 'static {
+    fn this_type_name(&self) -> &'static str;
+    fn this_type_id(&self) ->TypeId;
     fn get_val(&self, key: &str) -> Option<Value>;
     fn set_value(&mut self, _key: &str, _val: Value) {
         panic!("default OutputObject not support set.")
@@ -36,9 +35,14 @@ pub trait OutputObject {
 //     }
 // }
 impl OutputObject for Value {
-    fn type_name(&self) -> &'static str {
+    fn this_type_name(&self) -> &'static str {
         std::any::type_name::<Value>().into()
     }
+
+    fn this_type_id(&self) -> TypeId {
+        std::any::TypeId::of::<Value>()
+    }
+
     fn get_val(&self, key: &str) -> Option<Value> {
         let ks = key.splitn(2, ".").collect::<Vec<_>>();
         if let Value::Object(obj) = self {
@@ -88,7 +92,7 @@ pub struct Output {
 
 impl Debug for Output {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Output type[{}]", self.inner.type_name())
+        write!(f, "Output type[{}]", self.inner.this_type_name())
     }
 }
 impl<T: OutputObject + Send + 'static> From<T> for Output {
@@ -113,8 +117,11 @@ impl Output {
     pub fn new<T: OutputObject + Send + 'static>(t: T) -> Self {
         Output { inner: Box::new(t) }
     }
+    pub fn assert<T: 'static>(&self) -> bool {
+        self.inner.this_type_id() == TypeId::of::<T>()
+    }
     pub fn into<T: 'static>(self) -> anyhow::Result<T> {
-        let name = self.inner.type_name();
+        let name = self.inner.this_type_name();
         match (self.inner).any().downcast::<T>() {
             Ok(o) => Ok(*o),
             Err(_e) => {
@@ -122,6 +129,17 @@ impl Output {
             }
         }
     }
+    pub fn def_inner_mut<T: 'static>(&mut self) ->Option<&mut T> {
+        if !self.assert::<T>(){
+            return None;
+        }
+        unsafe {
+            let a = &mut *self.inner;
+            let b = &mut *(a as *mut dyn OutputObject as *mut T as *mut T);
+            Some(b)
+        }
+    }
+
     pub fn get_val(&self, key: &str) -> Option<Value> {
         self.inner.get_val(key)
     }
@@ -138,7 +156,7 @@ impl Output {
 pub enum Tran {
     Value(Value),
     Quote(String),
-    Format(Vec<String>)
+    Format(Vec<String>),
 }
 
 impl Tran {
@@ -155,12 +173,16 @@ impl Tran {
 pub struct JsonInput {
     none_quote_skip: bool,
     transform_rule: HashMap<String, Tran>,
-    default_json: Value,  // 通过${{xxx.xxx}}的形式插入变量
+    default_json: Value, // 通过${{xxx.xxx}}的形式插入变量
 }
 
 impl JsonInput {
     pub fn skip_null_quote(mut self) -> Self {
         self.none_quote_skip = true;
+        self
+    }
+    pub fn set_default_json(mut self, default_json: Value) -> Self {
+        self.default_json = default_json;
         self
     }
     pub fn add_transform_rule<S: Into<String>, I: Into<Tran>>(
@@ -210,24 +232,31 @@ impl JsonInput {
                 if ss.len() == 1 {
                     map.insert(ss[0].to_string(), val);
                 } else {
-                    let mut new_val= Value::Object(Map::new());
-                    Self::insert_val_to_json_val(&mut new_val, ss[1], val)?;
-                    map.insert(ss[0].to_string(),new_val);
+                    if let Some(m) = map.get_mut(ss[0]) {
+                        Self::insert_val_to_json_val(m, ss[1], val)?;
+                    } else {
+                        let mut new_val = Value::Object(Map::new());
+                        Self::insert_val_to_json_val(&mut new_val, ss[1], val)?;
+                        map.insert(ss[0].to_string(), new_val);
+                    }
                 }
                 Ok(())
             }
         }
     }
-    pub fn format_val_to_json_str(t: &mut Value, pos: &str,val_name:String, val: Value) -> anyhow::Result<()> {
+    pub fn format_val_to_json_str(
+        t: &mut Value,
+        pos: &str,
+        val_name: String,
+        val: Value,
+    ) -> anyhow::Result<()> {
         let ss = pos.splitn(2, ".").collect::<Vec<_>>();
         match t {
-            Value::String(s)=>{
-                *s = s.replace(val_name.as_str(),val.to_string().as_str());
+            Value::String(s) => {
+                *s = s.replace(val_name.as_str(), val.to_string().as_str());
                 Ok(())
             }
-            _=>{
-                anyhow::anyhow!("JsonInput.to format only support string, pos[{}]", ss[0]).err()
-            }
+            _ => anyhow::anyhow!("JsonInput.to format only support string, pos[{}]", ss[0]).err(),
         }
     }
     pub fn remove_val_from_json_val(t: &mut Value, pos: &str) -> anyhow::Result<Value> {
@@ -263,53 +292,54 @@ impl JsonInput {
         }
     }
 
-    fn default_json_make_rule(&mut self,val:&Value,path:String){
+    fn default_json_make_rule(&mut self, val: &Value, path: String) {
         match val {
             Value::String(s) => {
                 if self.transform_rule.contains_key(path.as_str()) {
                     return;
                 }
                 let mut list = string::extract_template_content(s);
-                if list.len() == 1 && &list[0] == s {
-                    self.transform_rule.insert(path, Tran::Quote(list.remove(0)));
-                }else{
+                if list.len() == 1 && list[0].len() == (s.len() - 5) {
+                    self.transform_rule
+                        .insert(path, Tran::Quote(list.remove(0)));
+                } else {
                     self.transform_rule.insert(path, Tran::Format(list));
                 }
             }
             Value::Array(list) => {
                 for i in list {
-                    self.default_json_make_rule(&i,path.clone());
+                    self.default_json_make_rule(&i, path.clone());
                 }
             }
             Value::Object(obj) => {
-                for (k,v) in obj {
-                    let p = if path.is_empty(){
-                        path.clone()
-                    }else{
+                for (k, v) in obj {
+                    let p = if path.is_empty() {
+                        k.clone()
+                    } else {
                         format!("{}.{}", path, k)
                     };
-                    self.default_json_make_rule(&v,p);
+                    self.default_json_make_rule(&v, p);
                 }
             }
             _ => {}
         }
     }
-    fn cover_default(default:Value,val:&mut Value){
+    fn cover_default(default: Value, val: &mut Value) {
         match default {
-            Value::Null=>{
+            Value::Null => {
                 return;
             }
             Value::Object(obj) => {
-                for (k,v) in obj {
+                for (k, v) in obj {
                     if let Value::Object(map) = val {
                         if let Some(val) = map.get_mut(k.as_str()) {
-                            Self::cover_default(v,val);
-                        }else{
-                            map.insert(k,v);
+                            Self::cover_default(v, val);
+                        } else {
+                            map.insert(k, v);
                         }
-                    }else{
+                    } else {
                         let mut map = Map::new();
-                        map.insert(k,v);
+                        map.insert(k, v);
                         *val = Value::Object(Map::new());
                     }
                 }
@@ -317,11 +347,14 @@ impl JsonInput {
             _ => {
                 *val = default;
             }
-
         }
     }
-    async fn get_var_from_ctx(pos:&str,ctx:&Ctx,data_source:&mut Option<Value>)->anyhow::Result<Value> {
-        if let Some(val) = data_source{
+    async fn get_var_from_ctx(
+        pos: &str,
+        ctx: &Ctx,
+        data_source: &mut Option<Value>,
+    ) -> anyhow::Result<Value> {
+        if let Some(val) = data_source {
             return Self::remove_val_from_json_val(val, pos);
         }
         let ss = pos.splitn(2, ".").collect::<Vec<_>>();
@@ -330,51 +363,51 @@ impl JsonInput {
         if let Some(val) = ctx.get_var_field(node, key).await {
             Ok(val)
         } else {
-
-                return anyhow::anyhow!(
-                                "JsonInput.to not found node.field[{}] from metadata",
-                                pos
-                            )
-                    .err();
+            return anyhow::anyhow!("JsonInput.to not found node.field[{}] from metadata", pos)
+                .err();
         }
     }
     pub async fn transform(
         mut self,
         ctx: Ctx,
         val: &mut Value,
-        mut data_source:Option<Value>,
+        mut data_source: Option<Value>,
     ) -> anyhow::Result<()> {
         let default_json = self.default_json.take();
-        self.default_json_make_rule(&default_json,"".into());
-        Self::cover_default(default_json,val);
+        self.default_json_make_rule(&default_json, "".into());
+        Self::cover_default(default_json, val);
 
         for (k, v) in self.transform_rule {
             match v {
                 Tran::Value(v) => {
                     Self::insert_val_to_json_val(val, k.as_str(), v)?;
-                },
+                }
                 Tran::Quote(q) => {
-                    match Self::get_var_from_ctx(&q,&ctx,&mut data_source).await{
+                    match Self::get_var_from_ctx(&q, &ctx, &mut data_source).await {
                         Ok(v) => {
                             Self::insert_val_to_json_val(val, k.as_str(), v)?;
                         }
                         Err(e) => {
                             if !self.none_quote_skip {
-                                return Err(e)
+                                return Err(e);
                             }
                         }
                     };
-
-                },
-                Tran::Format(list)=>{
+                }
+                Tran::Format(list) => {
                     for i in list {
-                        match Self::get_var_from_ctx(i.as_str(),&ctx,&mut data_source).await{
+                        match Self::get_var_from_ctx(i.as_str(), &ctx, &mut data_source).await {
                             Ok(v) => {
-                                Self::format_val_to_json_str(val, k.as_str(),format!("${{{{{}}}}}",i),v)?;
+                                Self::format_val_to_json_str(
+                                    val,
+                                    k.as_str(),
+                                    format!("${{{{{}}}}}", i),
+                                    v,
+                                )?;
                             }
                             Err(e) => {
                                 if !self.none_quote_skip {
-                                    return Err(e)
+                                    return Err(e);
                                 }
                             }
                         };
@@ -390,8 +423,9 @@ impl JsonInput {
     ) -> anyhow::Result<T> {
         let val = T::default();
         let mut val = serde_json::to_value(val)?;
-        self.transform(ctx, &mut val,None).await?;
-        let val = serde_json::from_value(val)?;Ok(val)
+        self.transform(ctx, &mut val, None).await?;
+        let val = serde_json::from_value(val)?;
+        Ok(val)
     }
 }
 
@@ -405,14 +439,18 @@ impl TryFrom<&str> for JsonInput {
 
 #[cfg(test)]
 mod test {
-    use crate::core::{Ctx, EngineRT, JsonInput};
+    use std::any::{Any, TypeId};
+    use crate::core::{Ctx, EngineRT, JsonInput, Output, OutputObject};
     use serde::{Deserialize, Serialize};
+    use serde_json::{json, Value};
+    use std::collections::HashMap;
 
     #[derive(Default, Debug, Serialize, Deserialize)]
     struct TestJson {
         name: String,
         code: isize,
         list: Vec<isize>,
+        map: HashMap<String, isize>,
     }
 
     #[tokio::test]
@@ -429,16 +467,24 @@ mod test {
 
         let ji = JsonInput::default()
             .skip_null_quote()
+            .set_default_json(json!({
+                "code":2,
+                "map":{
+                    "code2":"${{test_node.code}}"
+                }
+            }))
             .add_transform_value("name", "helloworld")
             .add_transform_quote("message", "test_node.message")
             .add_transform_quote("code", "test_node.code_v2")
+            .add_transform_quote("map.code1", "test_node.code")
             .add_transform_quote("list", "test_node.data.list");
 
         let t = ji.default_transform::<TestJson>(ctx).await.unwrap();
-        assert_eq!(t.code, 0);
+        assert_eq!(t.code, 2);
         assert_eq!(t.name, "helloworld");
         assert_eq!(t.list[0], 1);
         assert_eq!(t.list[2], 3);
+        println!("--->{:?}", t)
     }
 
     #[test]
@@ -456,5 +502,45 @@ mod test {
         }
         "#).unwrap();
         println!("{:?}", ji)
+    }
+    #[test]
+    fn test_output_into(){
+        struct Req{
+            name: String,
+        }
+        impl OutputObject for Req{
+            fn this_type_name(&self) -> &'static str {
+                std::any::type_name::<Req>()
+            }
+
+            fn this_type_id(&self) -> TypeId {
+                TypeId::of::<Req>()
+            }
+
+            fn get_val(&self, key: &str) -> Option<Value> {
+                None
+            }
+
+            fn any(self: Box<Self>) -> Box<dyn Any + Send + 'static> {
+                self
+            }
+        }
+
+        let req = Req{
+            name:"hello world".to_string()
+        };
+        let mut out = Output::new(req);
+
+        assert_eq!(out.assert::<Req>(), true);
+
+        if let Some(s) = out.def_inner_mut::<Req>(){
+            s.name = "hello thank you".into();
+        }
+        
+        
+        let res = out.into::<Req>();
+
+        assert_eq!(res.is_ok(), true);
+        assert_eq!(res.unwrap().name,"hello thank you");
     }
 }

@@ -1,44 +1,44 @@
-use serde_json::Value;
 use crate::core::{Ctx, JsonServiceExt, Plan, ServiceEntity};
 use crate::service::ext::Obj;
+use serde_json::Value;
 
 pub struct FixedPlan<T> {
     pub plan: T,
 }
 
 #[async_trait::async_trait]
-impl<T:Plan + Clone + Sync + 'static> JsonServiceExt<Obj, Value> for FixedPlan<T> {
+impl<T: Plan + Clone + Sync + 'static> JsonServiceExt<Obj, Value> for FixedPlan<T> {
     async fn call(&self, ctx: Ctx, input: Obj, _se: ServiceEntity) -> anyhow::Result<Value> {
-        ctx.fork(self.plan.clone()).run::<Value,_>(input.into()).await
+        ctx.fork(self.plan.clone())
+            .run::<Value, _>(input.into())
+            .await
     }
 }
 
 impl<T> FixedPlan<T> {
-    pub fn new(plan:T)->Self{
-        Self{
-            plan
-        }
+    pub fn new(plan: T) -> Self {
+        Self { plan }
     }
 }
 
 #[cfg(test)]
-mod test{
-    use serde::{Deserialize, Serialize};
+mod test {
     use crate::core::{Ctx, CtxSerdeExt, EngineRT, MapServiceLoader, ServiceEntity};
     use crate::plan::dag::DAG;
     use crate::service::agent::FixedPlan;
     use crate::service::flow::{End, Start};
+    use serde::{Deserialize, Serialize};
 
     #[tokio::test]
-    async fn test_workflow(){
-        #[derive(Debug,Default,Clone,Serialize,Deserialize)]
-        struct AddRequest{
-            a:usize,
-            b:usize,
+    async fn test_workflow() {
+        #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+        struct AddRequest {
+            a: usize,
+            b: usize,
         }
-        #[derive(Debug,Default,Clone,Serialize,Deserialize)]
-        struct AddResponse{
-            res:usize,
+        #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+        struct AddResponse {
+            res: usize,
         }
         let plan = DAG::default().nodes([
             ("start",r#"{"service_name":"start","config":{"transform_rule":{"a":{"quote":"a"}}}}"#),
@@ -53,10 +53,15 @@ mod test{
                 MapServiceLoader::default()
                     .register_json_ext_service("start", Start {})
                     .register_json_ext_service("end", End {})
-                    .register_json_ext_service("add",|_ctx:Ctx,input:AddRequest,_se:ServiceEntity|async move{
-                        Ok(AddResponse{res:input.a+input.b})
-                    })
-                    .register_json_ext_service("add_1_workflow",add_1_workflow)
+                    .register_json_ext_service(
+                        "add",
+                        |_ctx: Ctx, input: AddRequest, _se: ServiceEntity| async move {
+                            Ok(AddResponse {
+                                res: input.a + input.b,
+                            })
+                        },
+                    )
+                    .register_json_ext_service("add_1_workflow", add_1_workflow),
             )
             .append_service_middle(|ctx: Ctx, se| {
                 println!("执行一个service:{}", se);

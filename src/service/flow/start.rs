@@ -30,7 +30,7 @@ impl JsonServiceExt<Value, Value> for Start {
         };
 
         let mut def_val = Value::Object(Map::new());
-        ji.transform(ctx,&mut def_val, Some(input)).await?;
+        ji.transform(ctx, &mut def_val, Some(input)).await?;
         Ok(def_val)
     }
     async fn output(&self, out: Value) -> anyhow::Result<Output> {

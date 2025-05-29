@@ -200,7 +200,7 @@ impl Engine {
                 })
                 .await;
             return if let Some(s) = out {
-                s.into()
+                s.into::<Out>()
             } else {
                 anyhow::anyhow!("not found result").err()
             };

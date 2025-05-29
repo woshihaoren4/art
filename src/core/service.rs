@@ -31,7 +31,6 @@ impl ServiceLoader for () {
     }
 }
 
-
 #[derive(Default)]
 pub struct MapServiceLoader {
     pub map: HashMap<String, Arc<dyn Service + Sync + 'static>>,

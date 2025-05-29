@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::mem::take;
 use wd_tools::PFErr;
 
-#[derive(Default,Debug,Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DAGNode {
     pub node_name: String,
@@ -14,8 +14,9 @@ pub struct DAGNode {
 }
 impl DAGNode {
     #[allow(unused)]
-    pub fn try_from_str(s:&str)->anyhow::Result<Self>{
-        let n = serde_json::from_str(s)?;Ok(n)
+    pub fn try_from_str(s: &str) -> anyhow::Result<Self> {
+        let n = serde_json::from_str(s)?;
+        Ok(n)
     }
     pub fn new<S: Into<String>>(node_name: S) -> Self {
         Self {
@@ -23,9 +24,9 @@ impl DAGNode {
             ..Default::default()
         }
     }
-    pub fn set_node_name<S: Into<String>>(mut self,node_name: S) -> Self {
-        let node_name= node_name.into();
-        if let Some(ref mut s) = self.service{
+    pub fn set_node_name<S: Into<String>>(mut self, node_name: S) -> Self {
+        let node_name = node_name.into();
+        if let Some(ref mut s) = self.service {
             s.node_name = node_name.clone();
         }
         self.node_name = node_name;
@@ -112,7 +113,7 @@ impl From<&str> for DAGNode {
     }
 }
 
-#[derive(Default,Debug,Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct DAG {
     pub start: String,
     pub end: String,
@@ -194,14 +195,18 @@ impl DAG {
         } else {
             self.node_set.insert(
                 from.clone(),
-                DAGNode::default().set_node_name(from.clone()).set_to(vec![to.clone()]),
+                DAGNode::default()
+                    .set_node_name(from.clone())
+                    .set_to(vec![to.clone()]),
             );
         }
         if let Some(n) = self.node_set.get_mut(to.as_str()) {
             n.add_from(from);
         } else {
-            self.node_set
-                .insert(to.clone(), DAGNode::default().set_node_name(to).set_from(vec![from]));
+            self.node_set.insert(
+                to.clone(),
+                DAGNode::default().set_node_name(to).set_from(vec![from]),
+            );
         }
         self
     }
@@ -239,7 +244,7 @@ impl DAG {
                 if s.node_name.is_empty() {
                     return anyhow::anyhow!("node[{}].service.node is empty", k).err();
                 }
-            }else{
+            } else {
                 return anyhow::anyhow!("node[{}].service is empty", k).err();
             }
             if v.node_name == self.start {
