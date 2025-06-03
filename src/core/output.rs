@@ -9,7 +9,7 @@ use std::fmt::{Debug, Formatter};
 use std::str::FromStr;
 use wd_tools::{PFErr, PFOk};
 
-pub trait OutputObject
+pub trait OutputObject:Any
 where
     Self: 'static,
 {
@@ -24,6 +24,19 @@ where
     }
     fn any(self: Box<Self>) -> Box<dyn Any + Send + 'static>;
 }
+
+// pub trait OutputObjectAny{
+//     pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+//         if self.is::<T>() {
+//             // SAFETY: just checked whether we are pointing to the correct type, and we can rely on
+//             // that check for memory safety because we have implemented Any for all types; no other
+//             // impls can exist as they would conflict with our impl.
+//             unsafe { Some(self.downcast_ref_unchecked()) }
+//         } else {
+//             None
+//         }
+//     }
+// }
 
 // impl<T: Any> OutputObject for T {
 //     fn type_name(&self) -> &'static str {
@@ -123,6 +136,15 @@ impl Output {
     }
     pub fn assert<T: 'static>(&self) -> bool {
         self.inner.this_type_id() == TypeId::of::<T>()
+    }
+    pub fn inner_downcast_mut<T:'static>(&mut self) -> Option<&mut T> {
+        if !self.assert::<T>() {
+            return None;
+        }
+        unsafe {
+            let t = &mut *(&mut self.inner as *mut Box<dyn OutputObject + Send + 'static> as *mut Box<T>);
+            Some(&mut *t)
+        }
     }
     pub fn into<T: 'static>(self) -> anyhow::Result<T> {
         let name = self.inner.this_type_name();

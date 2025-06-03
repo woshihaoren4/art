@@ -1,5 +1,5 @@
 use crate::core::env::{CabinetEnv, Env};
-use crate::core::{Engine, Error, Output, Plan, ServiceEntity};
+use crate::core::{Engine, Error, Output, OutputObject, Plan, ServiceEntity};
 use serde_json::Value;
 use std::any::Any;
 use std::collections::HashMap;
@@ -177,6 +177,16 @@ impl Ctx {
             async move { res }
         })
         .await
+    }
+    pub async fn update_var<T:'static,Out>(&self,var_name: &str,handle:impl FnOnce(Option<&mut T>) -> Out) -> Out {
+        self.async_mut_metadata(|m| {
+            let out = if let Some(val) = m.vars.get_mut(var_name) {
+                handle(val.inner_downcast_mut::<T>())
+            }else{
+                handle(None)
+            };
+            async move {out}
+        }).await
     }
     pub fn insert_input<I: Any>(&self, input: I) {
         self.deref_mut_metadata(|c| c.input = Some(Box::new(input)));
