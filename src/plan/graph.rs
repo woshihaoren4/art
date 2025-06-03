@@ -314,10 +314,10 @@ impl Plan for Graph {
 
 #[cfg(test)]
 mod test {
-    use serde::{Deserialize, Serialize};
     use crate::core::{CtxSerdeExt, EngineRT, JsonInput, Plan};
     use crate::plan::graph::{Graph, GraphNode};
     use crate::service::ext::ServiceLoaderWrap;
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
 
     #[test]
@@ -354,54 +354,68 @@ mod test {
     async fn test_select_graph() {
         #[derive(Default, Debug, Clone, Serialize, Deserialize)]
         #[serde(default)]
-        struct AddInOut{
-            a:isize,
-            b:isize,
-            result:isize,
+        struct AddInOut {
+            a: isize,
+            b: isize,
+            result: isize,
         }
         let rt = EngineRT::default()
-            .set_service_loader(ServiceLoaderWrap::default()
-                .register_json_ext_service("add",|_ctx, mut io:AddInOut, _se|async move{
+            .set_service_loader(ServiceLoaderWrap::default().register_json_ext_service(
+                "add",
+                |_ctx, mut io: AddInOut, _se| async move {
                     io.result = io.a + io.b;
                     Ok(io)
-                }))
+                },
+            ))
             .build();
         let select_cfg = json!({
         "conditions": {
-            "cond": {
-                "cond": "and",
-                "sub": [{
-                    "cond": {
-                        "cond": "greater",
-                        "sub": [{
-                            "value": "${{start.number}}"
-                        }, {
-                            "value": 666
-                        }]
-                    }
-                }]
-            }
+            "greater": ["${{start.number}}", 9]
         },
         "true_to_nodes": ["A"],
         "false_to_nodes": ["B"]
         });
         let a_cfg = json!({
             "a":"${{start.number}}",
-            "b":1,
+            "b":-1,
         });
         let b_cfg = json!({
             "a":"${{start.number}}",
-            "b":-1,
+            "b":1,
+        });
+        let m_cfg = json!({
+            "a":"${{A.result}}",
+            "b":"${{B.result}}",
         });
 
         let plan = Graph::default()
             .node(("start",r#"{"service_name":"start","config":{"transform_rule":{"number":{"quote":"number"}}}}"#))
+            .node(GraphNode::new("var").set_service_entity_json("var",JsonInput::default()))
             .node(GraphNode::new("select").set_service_entity_json("flow_select",JsonInput::default().set_default_json(select_cfg)))
             .node(GraphNode::new("A").set_service_entity_json("add",JsonInput::default().set_default_json(a_cfg)))
             .node(GraphNode::new("B").set_service_entity_json("add",JsonInput::default().set_default_json(b_cfg)))
-            .node(("end", r#"{"service_name":"end","config":{"transform_rule":{"result":{"quote":"number"}}}}"#))
-            .edges([("start","select"),("select","A"),("select","B"),("A","end"),("B","end")])
+            .node(GraphNode::new("merge").set_service_entity_json("add",JsonInput::default().set_default_json(m_cfg).skip_null_quote()))
+            .node(("end", r#"{"service_name":"end","config":{"transform_rule":{"result":{"quote":"merge.result"}}}}"#))
+            .edges([("start","select"),("select","A"),("select","B"),("A","merge"),("B","merge"),("merge","end")])
             .check()
             .unwrap();
+
+        let res: AddInOut = rt
+            .ctx(plan.clone())
+            .serde_run(json!({
+                "number":8,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(res.result, 9);
+
+        let res: AddInOut = rt
+            .ctx(plan.clone())
+            .serde_run(json!({
+                "number":10,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(res.result, 9);
     }
 }

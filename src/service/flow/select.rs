@@ -7,39 +7,37 @@ use wd_tools::PFErr;
 #[derive(Default, Debug)]
 pub struct Select {}
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SelectCfg {
-    pub conditions: SelectTree,
+    pub conditions: SelectNode,
     pub true_to_nodes: Vec<String>,
     pub false_to_nodes: Vec<String>,
 }
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SelectCond {
+pub enum SelectNode {
     #[default]
     None,
-    Equal,    // =
-    NotEqual, // !=
-    Greater,  // >
-    Less,     // <
-    Empty,
-    NonEmpty,
-    And,
-    Or,
+    Equal(Value, Value),        // =
+    NotEqual(Value, Value),     // !=
+    Greater(Value, Value),      // >
+    GreaterEqual(Value, Value), // >=
+    Less(Value, Value),         // <
+    LessEqual(Value, Value),    // <=
+    Contain(Value, Value),      // 包含
+    Empty(Value),
+    NonEmpty(Value),
+    And(Vec<SelectNode>),
+    Or(Vec<SelectNode>),
 }
-#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
-pub struct SelectNode {
-    pub cond: SelectCond,
-    pub sub: Vec<SelectTree>,
-}
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SelectTree {
-    Value(Value),
-    Cond(SelectNode),
-}
-impl Default for SelectTree {
-    fn default() -> Self {
-        Self::Cond(SelectNode::default())
+
+impl Display for SelectNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            serde_json::to_string(&self).unwrap_or(String::new())
+        )
     }
 }
 impl Display for SelectCfg {
@@ -51,11 +49,11 @@ impl Display for SelectCfg {
         )
     }
 }
-impl SelectCond {
+impl SelectNode {
     pub fn number_value_compare(
         left: Value,
         right: Value,
-        opt: SelectCond,
+        opt: SelectNode,
     ) -> anyhow::Result<bool> {
         let mut ty = 1; // 1:i64 2:float
         if left.is_f64() || right.is_f64() || left.is_string() || right.is_string() {
@@ -65,17 +63,21 @@ impl SelectCond {
             let left = if let Some(s) = left.as_i64() {
                 s
             } else {
-                return anyhow::anyhow!("type[{left}] can not as i64").err();
+                return anyhow::anyhow!("select.number_value_compare:type[{left}] can not as i64")
+                    .err();
             };
             let right = if let Some(s) = right.as_i64() {
                 s
             } else {
-                return anyhow::anyhow!("type[{right}] can not as i64").err();
+                return anyhow::anyhow!("select.number_value_compare:type[{right}] can not as i64")
+                    .err();
             };
             return match opt {
-                SelectCond::Greater => Ok(left > right),
-                SelectCond::Less => Ok(left < right),
-                _ => anyhow::anyhow!("number_value_compare no support opt[{opt:?}]").err(),
+                SelectNode::Greater(_, _) => Ok(left > right),
+                SelectNode::GreaterEqual(_, _) => Ok(left >= right),
+                SelectNode::Less(_, _) => Ok(left < right),
+                SelectNode::LessEqual(_, _) => Ok(left <= right),
+                _ => anyhow::anyhow!("select.number_value_compare no support opt[{opt:?}]").err(),
             };
         }
         assert_eq!(ty, 2);
@@ -83,130 +85,114 @@ impl SelectCond {
             if let Some(f) = left.as_f64() {
                 f
             } else {
-                return anyhow::anyhow!("type[{left}] can not as f64").err();
+                return anyhow::anyhow!("select.number_value_compare:type[{left}] can not as f64")
+                    .err();
             }
         } else if left.is_string() {
             let s = left.as_str().unwrap_or("0");
             f64::from_str(s)?
         } else {
-            return anyhow::anyhow!("type[{left}] can not as f64").err();
+            return anyhow::anyhow!("select.number_value_compare:type[{left}] can not as f64")
+                .err();
         };
         let right = if right.is_number() {
             if let Some(f) = right.as_f64() {
                 f
             } else {
-                return anyhow::anyhow!("type[{right}] can not as f64").err();
+                return anyhow::anyhow!("select.number_value_compare:type[{right}] can not as f64")
+                    .err();
             }
         } else if right.is_string() {
             let s = right.as_str().unwrap_or("0");
             f64::from_str(s)?
         } else {
-            return anyhow::anyhow!("type[{right}] can not as f64").err();
+            return anyhow::anyhow!("select.number_value_compare:type[{right}] can not as f64")
+                .err();
         };
         match opt {
-            SelectCond::Greater => Ok(left > right),
-            SelectCond::Less => Ok(left < right),
-            _ => anyhow::anyhow!("number_value_compare no support opt[{opt:?}]").err(),
+            SelectNode::Greater(_, _) => Ok(left > right),
+            SelectNode::GreaterEqual(_, _) => Ok(left >= right),
+            SelectNode::Less(_, _) => Ok(left < right),
+            SelectNode::LessEqual(_, _) => Ok(left <= right),
+            _ => anyhow::anyhow!("select.number_value_compare no support opt[{opt:?}]").err(),
         }
     }
-    pub fn calc(self, mut args: Vec<Value>) -> anyhow::Result<bool> {
+    pub fn calc(self) -> anyhow::Result<bool> {
         match self {
-            SelectCond::None => Ok(false),
-            SelectCond::Equal => {
-                if args.len() != 2 {
-                    return anyhow::anyhow!("SelectCond:[Equal] must have two var").err();
-                }
-                let res = args[0] == args[1];
-                Ok(res)
+            SelectNode::None => Ok(true),
+            SelectNode::Equal(a, b) => Ok(a == b),
+            SelectNode::NotEqual(a, b) => Ok(a != b),
+            SelectNode::Greater(a, b) => {
+                Self::number_value_compare(a, b, SelectNode::Greater(Value::Null, Value::Null))
             }
-            SelectCond::NotEqual => {
-                if args.len() != 2 {
-                    return anyhow::anyhow!("SelectCond:[NotEqual] must have two var").err();
-                }
-                let res = args[0] == args[1];
-                Ok(!res)
+            SelectNode::GreaterEqual(a, b) => {
+                Self::number_value_compare(a, b, SelectNode::GreaterEqual(Value::Null, Value::Null))
             }
-            SelectCond::Greater => {
-                if args.len() != 2 {
-                    return anyhow::anyhow!("SelectCond:[Greater] must have two var").err();
-                }
-                Self::number_value_compare(args.remove(0), args.remove(0), self)
+            SelectNode::Less(a, b) => {
+                Self::number_value_compare(a, b, SelectNode::Less(Value::Null, Value::Null))
             }
-            SelectCond::Less => {
-                if args.len() != 2 {
-                    return anyhow::anyhow!("SelectCond:[Less] must have two var").err();
-                }
-                Self::number_value_compare(args.remove(0), args.remove(0), self)
+            SelectNode::LessEqual(a, b) => {
+                Self::number_value_compare(a, b, SelectNode::LessEqual(Value::Null, Value::Null))
             }
-            SelectCond::Empty => {
-                for i in args {
-                    if !i.is_null() {
-                        return Ok(false);
+            SelectNode::Contain(a, b) => {
+                match a {
+                    Value::String(ref a) => {
+                        if let Value::String(ref b) = b {
+                            return Ok(a.contains(b));
+                        }
                     }
+                    Value::Array(ref list) => {
+                        for i in list {
+                            if i == &b {
+                                return Ok(true);
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                return Ok(true);
+                return anyhow::anyhow!("select.Contain[{a:?}] no support type[{b:?}]").err();
             }
-            SelectCond::NonEmpty => {
-                if args.is_empty() {
+            SelectNode::Empty(a) => {
+                if !a.is_null() {
                     return Ok(false);
                 }
-                for i in args {
-                    if i.is_null() {
+                return Ok(true);
+            }
+            SelectNode::NonEmpty(a) => {
+                if a.is_null() {
+                    return Ok(false);
+                }
+
+                return Ok(true);
+            }
+            _ => return anyhow::anyhow!("select.SelectCond[{self:?}] no support calc").err(),
+        }
+    }
+    pub fn generate_result(self) -> anyhow::Result<bool> {
+        match self {
+            SelectNode::And(list) => {
+                if list.len() < 2 {
+                    return anyhow::anyhow!("select.SelectNode[and].cond must >= two").err();
+                }
+                for i in list {
+                    if !i.generate_result()? {
                         return Ok(false);
                     }
                 }
-                return Ok(true);
+                Ok(true)
             }
-            _ => return anyhow::anyhow!("SelectCond[{self:?}] no support calc").err(),
-        }
-    }
-}
-impl SelectTree {
-    pub fn get_value(self) -> anyhow::Result<Value> {
-        match self {
-            SelectTree::Value(val) => Ok(val),
-            SelectTree::Cond(_cond) => anyhow::anyhow!("[SelectTree] this is not value").err(),
-        }
-    }
-    pub fn generate_result(self) -> anyhow::Result<Value> {
-        match self {
-            SelectTree::Value(val) => Ok(val),
-            SelectTree::Cond(cond) => match cond.cond {
-                SelectCond::And => {
-                    if cond.sub.len() < 2 {
-                        return anyhow::anyhow!("[SelectTree] conditions[and] must >= two").err();
-                    }
-                    for i in cond.sub {
-                        if let Value::Bool(b) = i.generate_result()? {
-                            if !b {
-                                return Ok(Value::from(false));
-                            }
-                        }
-                    }
-                    Ok(Value::from(true))
+            SelectNode::Or(list) => {
+                if list.len() < 2 {
+                    return anyhow::anyhow!("select.SelectNode[or].cond must >= two").err();
                 }
-                SelectCond::Or => {
-                    if cond.sub.len() < 2 {
-                        return anyhow::anyhow!("[SelectTree] conditions[or] must >= two").err();
+                for i in list {
+                    if i.generate_result()? {
+                        return Ok(true);
                     }
-                    for i in cond.sub {
-                        if let Value::Bool(b) = i.generate_result()? {
-                            if b {
-                                return Ok(Value::from(true));
-                            }
-                        }
-                    }
-                    Ok(Value::from(false))
                 }
-                _ => {
-                    let mut args = Vec::with_capacity(cond.sub.len());
-                    for i in cond.sub {
-                        args.push(i.get_value()?);
-                    }
-                    let res = cond.cond.calc(args)?;
-                    Ok(Value::from(res))
-                }
-            },
+                Ok(false)
+            }
+            _ => return self.calc(),
         }
     }
 }
@@ -219,12 +205,6 @@ impl JsonServiceExt<SelectCfg, bool> for Select {
     async fn call(&self, ctx: Ctx, cfg: SelectCfg, se: ServiceEntity) -> anyhow::Result<bool> {
         //进行判断
         let res = cfg.conditions.generate_result()?;
-        let res = if let Value::Bool(b) = res {
-            b
-        } else {
-            //非判断值，都为true
-            true
-        };
         //修改plan
         let node = se.node_name;
         if res {
@@ -242,22 +222,17 @@ impl JsonServiceExt<SelectCfg, bool> for Select {
 
 #[cfg(test)]
 mod test {
-    use crate::service::flow::{SelectCfg, SelectCond, SelectNode, SelectTree};
+    use crate::service::flow::{SelectCfg, SelectNode};
     use serde_json::Value;
 
     #[test]
     fn select_config() {
         let cfg = SelectCfg {
-            conditions: SelectTree::Cond(SelectNode {
-                cond: SelectCond::And,
-                sub: vec![SelectTree::Cond(SelectNode {
-                    cond: SelectCond::Equal,
-                    sub: vec![
-                        SelectTree::Value(Value::from(123)),
-                        SelectTree::Value(Value::from("456")),
-                    ],
-                })],
-            }),
+            // conditions: SelectNode::And(vec![
+            //     SelectNode::Greater(Value::from(123),Value::from(456)),
+            //     SelectNode::Equal(Value::from("hello"),Value::from("world")),
+            // ]),
+            conditions: SelectNode::Greater(Value::from(123), Value::from(456)),
             true_to_nodes: vec!["A".into()],
             false_to_nodes: vec!["B".into()],
         };

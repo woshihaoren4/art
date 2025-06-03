@@ -49,13 +49,13 @@ impl ServiceLoaderWrap {
 }
 impl Default for ServiceLoaderWrap {
     fn default() -> Self {
-        Self::new().set_map_loader(
-            MapServiceLoader::default()
-                .register_json_ext_service("start", Start {})
-                .register_json_ext_service("end", End {})
-                .register_json_ext_service("workflow", Workflow::new())
-                .register_json_ext_service("flow_select", Select::default()),
-        )
+        let loader = MapServiceLoader::default()
+            .register_json_ext_service("start", Start {})
+            .register_json_ext_service("end", End {})
+            .register_json_ext_service("workflow", Workflow::new())
+            .register_json_ext_service("flow_select", Select::default());
+        // .register_service("var", Var::<DefaultVarMap>::default());
+        Self::new().set_map_loader(loader)
     }
 }
 

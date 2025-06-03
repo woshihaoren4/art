@@ -14,7 +14,10 @@ pub trait JsonServiceExt<
     async fn input(&self, ctx: Ctx, se: &mut ServiceEntity) -> anyhow::Result<In> {
         let res = se.transform_config(|c: Option<JsonInput>| c);
         match res {
-            Some(s) => s.default_transform(ctx).await,
+            Some(s) => match s.default_transform(ctx).await {
+                Ok(o) => Ok(o),
+                Err(e) => anyhow::anyhow!("Node[{}] input transform error:{e}", se.node_name).err(),
+            },
             None => Err(anyhow::anyhow!(
                 "JsonServiceExt:{}.{} ServiceEntity config must json Value",
                 se.service_name,

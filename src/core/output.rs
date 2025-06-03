@@ -6,11 +6,15 @@ use serde_json::{Map, Value};
 use std::any::{type_name, Any, TypeId};
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
+use std::str::FromStr;
 use wd_tools::{PFErr, PFOk};
 
-pub trait OutputObject where Self: 'static {
+pub trait OutputObject
+where
+    Self: 'static,
+{
     fn this_type_name(&self) -> &'static str;
-    fn this_type_id(&self) ->TypeId;
+    fn this_type_id(&self) -> TypeId;
     fn get_val(&self, key: &str) -> Option<Value>;
     fn set_value(&mut self, _key: &str, _val: Value) {
         panic!("default OutputObject not support set.")
@@ -129,8 +133,8 @@ impl Output {
             }
         }
     }
-    pub fn def_inner_mut<T: 'static>(&mut self) ->Option<&mut T> {
-        if !self.assert::<T>(){
+    pub fn def_inner_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        if !self.assert::<T>() {
             return None;
         }
         unsafe {
@@ -221,12 +225,41 @@ impl JsonInput {
     pub fn insert_val_to_json_val(t: &mut Value, pos: &str, val: Value) -> anyhow::Result<()> {
         let ss = pos.splitn(2, ".").collect::<Vec<_>>();
         match t {
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Array(_) => {
-                anyhow::anyhow!("JsonInput.to not found object field[{}]", ss[0]).err()
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+                println!("插入位置 --->{}", pos);
+                anyhow::anyhow!(
+                    "JsonInput.insert_val_to_json_val not found object field[{}]",
+                    ss[0]
+                )
+                .err()
+            }
+            Value::Array(list) => {
+                let index = if let Ok(o) = usize::from_str(ss[0]) {
+                    o
+                } else {
+                    return anyhow::anyhow!(
+                        "JsonInput.insert_val_to_json_val the array not support pos[{}]",
+                        ss[0]
+                    )
+                    .err();
+                };
+                if ss.len() == 1 {
+                    if index < list.len() {
+                        list[index] = val;
+                    } else {
+                        list.push(val)
+                    }
+                    return Ok(());
+                }
+                return if index < list.len() {
+                    Self::insert_val_to_json_val(&mut list[index], ss[1], val)
+                } else {
+                    anyhow::anyhow!(
+                        "JsonInput.insert_val_to_json_val index[{}] >= array.len",
+                        ss[0]
+                    )
+                    .err()
+                };
             }
             Value::Object(map) => {
                 if ss.len() == 1 {
@@ -266,12 +299,31 @@ impl JsonInput {
         }
         let ss = pos.splitn(2, ".").collect::<Vec<_>>();
         match t {
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Array(_) => {
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
                 return anyhow::anyhow!("JsonInput.remove_val_from_json_val field[{}]", ss[0]).err()
+            }
+            Value::Array(list) => {
+                let index = if let Ok(o) = usize::from_str(ss[0]) {
+                    o
+                } else {
+                    return anyhow::anyhow!(
+                        "JsonInput.remove_val_from_json_val the array not support pos[{}]",
+                        ss[0]
+                    )
+                    .err();
+                };
+                if index < list.len() {
+                    if ss.len() == 1 {
+                        let val = list.remove(index);
+                        return Ok(val);
+                    }
+                    return Self::remove_val_from_json_val(&mut list[index], ss[1]);
+                }
+                return anyhow::anyhow!(
+                    "JsonInput.remove_val_from_json_val pos[{}] >= array.len",
+                    ss[0]
+                )
+                .err();
             }
             Value::Object(map) => {
                 if ss.len() == 1 {
@@ -292,37 +344,50 @@ impl JsonInput {
         }
     }
 
-    fn default_json_make_rule(&mut self, val: &Value, path: String) {
+    fn default_json_make_rule(&mut self, val: &mut Value, path: String) -> bool {
         match val {
             Value::String(s) => {
                 if self.transform_rule.contains_key(path.as_str()) {
-                    return;
+                    return false;
                 }
                 let mut list = string::extract_template_content(s);
                 if list.len() == 1 && list[0].len() == (s.len() - 5) {
                     self.transform_rule
                         .insert(path, Tran::Quote(list.remove(0)));
-                } else {
+                    return true;
+                } else if list.len() > 0 {
                     self.transform_rule.insert(path, Tran::Format(list));
                 }
             }
             Value::Array(list) => {
-                for i in list {
-                    self.default_json_make_rule(&i, path.clone());
+                for (i, v) in list.iter_mut().enumerate() {
+                    let p = if path.is_empty() {
+                        path.clone()
+                    } else {
+                        format!("{}.{}", path, i)
+                    };
+                    self.default_json_make_rule(v, p);
                 }
             }
             Value::Object(obj) => {
-                for (k, v) in obj {
+                let mut remove_list = vec![];
+                for (k, v) in obj.iter_mut() {
                     let p = if path.is_empty() {
                         k.clone()
                     } else {
                         format!("{}.{}", path, k)
                     };
-                    self.default_json_make_rule(&v, p);
+                    if self.default_json_make_rule(v, p) {
+                        remove_list.push(k.clone())
+                    }
+                }
+                for i in remove_list {
+                    obj.remove(i.as_str());
                 }
             }
             _ => {}
         }
+        return false;
     }
     fn cover_default(default: Value, val: &mut Value) {
         match default {
@@ -340,7 +405,7 @@ impl JsonInput {
                     } else {
                         let mut map = Map::new();
                         map.insert(k, v);
-                        *val = Value::Object(Map::new());
+                        *val = Value::Object(map);
                     }
                 }
             }
@@ -373,8 +438,8 @@ impl JsonInput {
         val: &mut Value,
         mut data_source: Option<Value>,
     ) -> anyhow::Result<()> {
-        let default_json = self.default_json.take();
-        self.default_json_make_rule(&default_json, "".into());
+        let mut default_json = self.default_json.take();
+        self.default_json_make_rule(&mut default_json, "".into());
         Self::cover_default(default_json, val);
 
         for (k, v) in self.transform_rule {
@@ -424,7 +489,13 @@ impl JsonInput {
         let val = T::default();
         let mut val = serde_json::to_value(val)?;
         self.transform(ctx, &mut val, None).await?;
-        let val = serde_json::from_value(val)?;
+        let val = match serde_json::from_value(val) {
+            Ok(val) => val,
+            Err(e) => {
+                return anyhow::anyhow!("JsonInput.default_transform make t from value error:{e}")
+                    .err()
+            }
+        };
         Ok(val)
     }
 }
@@ -439,10 +510,10 @@ impl TryFrom<&str> for JsonInput {
 
 #[cfg(test)]
 mod test {
-    use std::any::{Any, TypeId};
     use crate::core::{Ctx, EngineRT, JsonInput, Output, OutputObject};
     use serde::{Deserialize, Serialize};
     use serde_json::{json, Value};
+    use std::any::{Any, TypeId};
     use std::collections::HashMap;
 
     #[derive(Default, Debug, Serialize, Deserialize)]
@@ -504,11 +575,11 @@ mod test {
         println!("{:?}", ji)
     }
     #[test]
-    fn test_output_into(){
-        struct Req{
+    fn test_output_into() {
+        struct Req {
             name: String,
         }
-        impl OutputObject for Req{
+        impl OutputObject for Req {
             fn this_type_name(&self) -> &'static str {
                 std::any::type_name::<Req>()
             }
@@ -517,7 +588,7 @@ mod test {
                 TypeId::of::<Req>()
             }
 
-            fn get_val(&self, key: &str) -> Option<Value> {
+            fn get_val(&self, _key: &str) -> Option<Value> {
                 None
             }
 
@@ -526,21 +597,20 @@ mod test {
             }
         }
 
-        let req = Req{
-            name:"hello world".to_string()
+        let req = Req {
+            name: "hello world".to_string(),
         };
         let mut out = Output::new(req);
 
         assert_eq!(out.assert::<Req>(), true);
 
-        if let Some(s) = out.def_inner_mut::<Req>(){
+        if let Some(s) = out.def_inner_mut::<Req>() {
             s.name = "hello thank you".into();
         }
-        
-        
+
         let res = out.into::<Req>();
 
         assert_eq!(res.is_ok(), true);
-        assert_eq!(res.unwrap().name,"hello thank you");
+        assert_eq!(res.unwrap().name, "hello thank you");
     }
 }
