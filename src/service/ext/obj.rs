@@ -1,4 +1,4 @@
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug,Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum Obj {
     Object(serde_json::Map<String, serde_json::Value>),

@@ -15,7 +15,12 @@ where
 {
     fn this_type_name(&self) -> &'static str;
     fn this_type_id(&self) -> TypeId;
-    fn get_val(&self, key: &str) -> Option<Value>;
+    fn get_val(&self, _key: &str) -> Option<Value>{
+        None
+    }
+    fn as_val(&self)->Value{
+        Value::Null
+    }
     fn set_value(&mut self, _key: &str, _val: Value) {
         panic!("default OutputObject not support set.")
     }
@@ -25,6 +30,26 @@ where
     fn any(self: Box<Self>) -> Box<dyn Any + Send + 'static>;
 }
 
+#[macro_export]
+macro_rules! default_output_object {
+    ($($stu:tt),*) => {
+        $(
+        impl crate::core::OutputObject for $stu {
+            fn this_type_name(&self) -> &'static str {
+                std::any::type_name::<$stu>().into()
+            }
+            fn this_type_id(&self) -> TypeId {
+                std::any::TypeId::of::<$stu>()
+            }
+            fn any(self: Box<Self>) -> Box<dyn Any + Send + 'static> {
+                self
+            }
+        }
+        )*
+
+    };
+}
+default_output_object!(i8,i16,i32,i64,isize,u8,u16,u32,u64,usize,f32,f64,bool,String);
 // pub trait OutputObjectAny{
 //     pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
 //         if self.is::<T>() {
@@ -61,6 +86,9 @@ impl OutputObject for Value {
     }
 
     fn get_val(&self, key: &str) -> Option<Value> {
+        if key=="*" {
+            return Some(self.clone());
+        }
         let ks = key.splitn(2, ".").collect::<Vec<_>>();
         if let Value::Object(obj) = self {
             if let Some(val) = obj.get(ks[0]) {
@@ -93,6 +121,9 @@ impl OutputObject for Value {
                 }
             }
         }
+    }
+    fn as_val(&self) -> Value {
+        self.clone()
     }
     fn string(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|e| e.to_string())
@@ -137,6 +168,15 @@ impl Output {
     pub fn assert<T: 'static>(&self) -> bool {
         self.inner.this_type_id() == TypeId::of::<T>()
     }
+    pub fn inner_downcast_def<T:'static>(&self) -> Option<&T> {
+        if !self.assert::<T>() {
+            return None;
+        }
+        unsafe {
+            let t = &*(&self.inner as *const Box<dyn OutputObject + Send + 'static> as *const Box<T>);
+            Some(&*t)
+        }
+    }
     pub fn inner_downcast_mut<T:'static>(&mut self) -> Option<&mut T> {
         if !self.assert::<T>() {
             return None;
@@ -168,6 +208,9 @@ impl Output {
 
     pub fn get_val(&self, key: &str) -> Option<Value> {
         self.inner.get_val(key)
+    }
+    pub fn as_val(&self) -> Value {
+        self.inner.as_val()
     }
     pub fn set_value(&mut self, key: &str, val: Value) {
         self.inner.set_value(key, val)
@@ -446,13 +489,18 @@ impl JsonInput {
         }
         let ss = pos.splitn(2, ".").collect::<Vec<_>>();
         let node = ss[0];
-        let key = if ss.len() > 1 { ss[1] } else { "" };
-        if let Some(val) = ctx.get_var_field(node, key).await {
-            Ok(val)
-        } else {
-            return anyhow::anyhow!("JsonInput.to not found node.field[{}] from metadata", pos)
-                .err();
-        }
+        let res = if ss.len() > 1 {
+            if let Some(val) = ctx.get_var_field(node, ss[1]).await {
+                val
+            }else{
+                return anyhow::anyhow!("JsonInput.to not found node.field[{}] from metadata", pos)
+                    .err();
+            }
+            
+        } else { 
+            ctx.get_var(node).await
+        };
+        Ok(res)
     }
     pub async fn transform(
         mut self,
@@ -612,6 +660,10 @@ mod test {
 
             fn get_val(&self, _key: &str) -> Option<Value> {
                 None
+            }
+
+            fn as_val(&self) -> Value {
+                Value::Null
             }
 
             fn any(self: Box<Self>) -> Box<dyn Any + Send + 'static> {

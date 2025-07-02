@@ -3,6 +3,7 @@ use crate::plan::dag::DAG;
 use crate::service::ext::Obj;
 use serde_json::Value;
 use wd_tools::PFErr;
+use crate::plan::graph::Graph;
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
@@ -10,7 +11,7 @@ pub enum WorkflowPlan {
     #[default]
     None,
     DAG(DAG),
-    GRAPH,
+    GRAPH(Graph),
 }
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -35,8 +36,9 @@ impl JsonServiceExt<WorkflowConfig, Value> for Workflow {
                 return anyhow::anyhow!("[Workflow::{}] plan is nil", se.node_name).err()
             }
             WorkflowPlan::DAG(dag) => ctx.fork(dag),
-            WorkflowPlan::GRAPH => {
-                return anyhow::anyhow!("[Workflow::{}] not support graph", se.node_name).err()
+            WorkflowPlan::GRAPH(g) => {
+                ctx.fork(g)
+                // return anyhow::anyhow!("[Workflow::{}] not support graph", se.node_name).err()
             }
         }
         .run::<Value, _>(input.into())

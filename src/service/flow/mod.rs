@@ -1,9 +1,9 @@
 mod end;
 mod select;
 mod start;
-mod var;
+mod batch;
 
 pub use end::*;
 pub use select::*;
 pub use start::*;
-pub use var::*;
+pub use batch::*;

@@ -1,6 +1,6 @@
 use crate::core::{JsonServiceExt, MapServiceLoader, Service, ServiceLoader};
 use crate::service::agent::Workflow;
-use crate::service::flow::{End, Select, Start};
+use crate::service::flow::{End, Select, Start,Batch};
 use std::sync::Arc;
 
 pub struct ServiceLoaderWrap {
@@ -52,6 +52,7 @@ impl Default for ServiceLoaderWrap {
         let loader = MapServiceLoader::default()
             .register_json_ext_service("start", Start {})
             .register_json_ext_service("end", End {})
+            .register_json_ext_service("batch", Batch::default())
             .register_json_ext_service("workflow", Workflow::new())
             .register_json_ext_service("flow_select", Select::default());
         // .register_service("var", Var::<DefaultVarMap>::default());

@@ -11,7 +11,7 @@ readme = "README.md"
 
 
 [dependencies]
-wd_tools = {version = "0.13.14",features = ["full"]}
+wd_tools = {version = "0.14.*",features = ["full"]}
 wd_log = "0.4.0"
 anyhow = "1.0.75"
 async-trait = "0.1.77"

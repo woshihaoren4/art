@@ -27,7 +27,9 @@ pub trait JsonServiceExt<
     }
     async fn output(&self, out: Out) -> anyhow::Result<Output> {
         match serde_json::to_value(out) {
-            Ok(o) => Output::new(o).ok(),
+            Ok(o) => {
+                Output::new(o).ok()
+            },
             Err(e) => anyhow::anyhow!("JsonServiceExt:output failed:{e}").err(),
         }
     }

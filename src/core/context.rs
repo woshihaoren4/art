@@ -178,6 +178,17 @@ impl Ctx {
         })
         .await
     }
+    pub async fn get_var(&self, node: &str) -> Value {
+        self.async_mut_metadata(|c| {
+            let res = if let Some(val) = c.vars.get(node) {
+                val.as_val()
+            } else {
+                Value::Null
+            };
+            async move { res }
+        })
+            .await
+    }
     pub async fn update_var<T:'static,Out>(&self,var_name: &str,handle:impl FnOnce(Option<&mut T>) -> Out) -> Out {
         self.async_mut_metadata(|m| {
             let out = if let Some(val) = m.vars.get_mut(var_name) {
@@ -188,6 +199,26 @@ impl Ctx {
             async move {out}
         }).await
     }
+    pub async fn update_var_default<T:OutputObject+'static + Send,Out>(&self,var_name: &str,handle:impl FnOnce(Option<&mut T>) -> Out,default:Option<T>) -> Out {
+        self.async_mut_metadata(|m| {
+            if let Some(t) = default {
+                if let Some(val) = m.vars.get_mut(var_name) {
+                    if val.inner_downcast_def::<T>().is_none(){
+                        m.vars.insert(var_name.to_string(),Output::new(t));
+                    }
+                }else{
+                    m.vars.insert(var_name.to_string(),Output::new(t));
+                };
+            }
+            let out = if let Some(val) = m.vars.get_mut(var_name) {
+                handle(val.inner_downcast_mut::<T>())
+            }else{
+                handle(None)
+            };
+            async move {out}
+        }).await
+    }
+
     pub fn insert_input<I: Any>(&self, input: I) {
         self.deref_mut_metadata(|c| c.input = Some(Box::new(input)));
     }
