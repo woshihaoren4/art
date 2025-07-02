@@ -28,6 +28,10 @@ impl JsonServiceExt<Value, Value> for Start {
             }
             None => Value::Null,
         };
+        
+        if ji.is_empty() {
+            return Ok(input)
+        }
 
         let mut def_val = Value::Object(Map::new());
         ji.transform(ctx, &mut def_val, Some(input)).await?;

@@ -246,6 +246,9 @@ pub struct JsonInput {
 }
 
 impl JsonInput {
+    pub fn is_empty(&self) -> bool {
+        self.transform_rule.is_empty() && self.default_json.is_null()
+    }
     pub fn skip_null_quote(mut self) -> Self {
         self.none_quote_skip = true;
         self

@@ -168,7 +168,7 @@ mod test{
         });
 
         let plan = Graph::default()
-            .node(("start",r#"{"service_name":"start","config":{"transform_rule":{"len":{"quote":"len"}}}}"#))
+            .node(("start",r#"{"service_name":"start","config":{}}"#))
             .node(GraphNode::new("list_make").set_service_entity_json("list_make",JsonInput::default().set_default_json(json!({"default":1,"len":"${{start.len}}"}))))
             .node(GraphNode::new("batch_add").set_service_entity_json("batch",JsonInput::default().set_default_json(batch_cfg)))
             .node(("end", r#"{"service_name":"end","config":{"transform_rule":{"outputs":{"quote":"batch_add.outputs"}}}}"#))
